@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: intall rust
         uses: actions-rs/toolchain@v1
@@ -35,10 +35,10 @@ jobs:
       - name: run tests
         run: cargo nextest run
 
-  release-please:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: googleapis/release-please-action@v4
+      - name: release
+        uses: release-plz/action@v0.5
         with:
-          token: "${{ secrets.RELEASE_PLEASE }}"
-          release-type: rust
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY }}
