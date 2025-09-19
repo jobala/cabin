@@ -1,14 +1,34 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use std::{ops::Bound, rc::Rc};
+
+use crate::memtable::{iterator::MemtableIterator, table::Memtable};
+use anyhow::Result;
+use bytes::Bytes;
+
+mod memtable;
+
+pub struct Storage {
+    memtable: Memtable,
+    frozen_memtables: Vec<Memtable>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub struct Config {}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+pub fn new(config: &Config) -> Storage {
+    Storage {
+        memtable: Memtable::new(0),
+        frozen_memtables: vec![],
+    }
+}
+
+impl Storage {
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        self.memtable.put(key, value)
+    }
+
+    pub fn get(&self, key: &[u8]) -> Option<Bytes> {
+        self.memtable.get(key)
+    }
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator {
+        !unimplemented!()
     }
 }
