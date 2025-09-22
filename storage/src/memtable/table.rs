@@ -1,6 +1,6 @@
-use std::{
-    rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 use anyhow::Result;
@@ -9,17 +9,11 @@ use crossbeam_skiplist::SkipMap;
 
 use crate::memtable::iterator::MemtableIterator;
 
-#[derive(Debug)]
-pub struct Memtable {
-    skip_map: Rc<SkipMap<Bytes, Bytes>>,
-    size: AtomicUsize,
-}
-
 impl Memtable {
     pub fn new(size: usize) -> Self {
         Memtable {
-            skip_map: Rc::new(SkipMap::new()),
-            size: AtomicUsize::new(size),
+            skip_map: Arc::new(SkipMap::new()),
+            size: Arc::new(AtomicUsize::new(size)),
         }
     }
 
@@ -28,7 +22,7 @@ impl Memtable {
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
 
         self.size
-            .fetch_add(key.len() + value.len(), Ordering::SeqCst);
+            .fetch_add(key.len() + value.len(), Ordering::Relaxed);
 
         Ok(())
     }
@@ -70,3 +64,9 @@ impl<'a> PartialEq for MemtableIterator<'a> {
 }
 
 impl<'a> Eq for MemtableIterator<'a> {}
+
+#[derive(Debug, Clone)]
+pub struct Memtable {
+    pub(crate) size: Arc<AtomicUsize>,
+    skip_map: Arc<SkipMap<Bytes, Bytes>>,
+}
