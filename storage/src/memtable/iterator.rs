@@ -1,28 +1,35 @@
-use std::rc::Rc;
-
-use anyhow::Ok;
 use bytes::Bytes;
 use crossbeam_skiplist::map::{Entry, Iter};
 
+use crate::common::errors::KeyNotFound;
+
+#[derive(Debug)]
 pub struct MemtableIterator<'a> {
     pub(crate) iter: Iter<'a, Bytes, Bytes>,
     pub(crate) current: Option<Entry<'a, Bytes, Bytes>>,
 }
 
 pub trait StorageIterator {
-    fn value(&self) -> &[u8];
-    fn key(&self) -> &[u8];
+    fn value(&self) -> Option<&[u8]>;
+    fn key(&self) -> Result<&[u8], KeyNotFound>;
     fn is_valid(&self) -> bool;
     fn next(&mut self) -> anyhow::Result<()>;
 }
 
 impl<'a> StorageIterator for MemtableIterator<'a> {
-    fn value(&self) -> &[u8] {
-        self.current.as_ref().unwrap().value()
+    fn value(&self) -> Option<&[u8]> {
+        match self.current.as_ref() {
+            Some(entry) => Some(entry.value()),
+            None => None,
+        }
     }
 
-    fn key(&self) -> &[u8] {
-        self.current.as_ref().unwrap().key()
+    fn key(&self) -> Result<&[u8], KeyNotFound> {
+        if let Some(item) = self.current.as_ref() {
+            return Ok(item.key());
+        } else {
+            Err(KeyNotFound)
+        }
     }
 
     fn is_valid(&self) -> bool {

@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering::{Greater, Less},
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -30,6 +29,7 @@ impl Memtable {
 
         self.size
             .fetch_add(key.len() + value.len(), Ordering::SeqCst);
+
         Ok(())
     }
 
@@ -37,7 +37,7 @@ impl Memtable {
         self.skip_map.get(key).map(|k| k.value().clone())
     }
 
-    pub fn iter(&self) -> MemtableIterator {
+    pub fn iter(&self) -> MemtableIterator<'_> {
         let mut iter = self.skip_map.iter();
         let current = iter.next();
 
