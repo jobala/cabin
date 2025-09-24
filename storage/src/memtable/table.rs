@@ -10,10 +10,10 @@ use crossbeam_skiplist::SkipMap;
 use crate::memtable::iterator::MemtableIterator;
 
 impl Memtable {
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
         Memtable {
             skip_map: Arc::new(SkipMap::new()),
-            size: Arc::new(AtomicUsize::new(size)),
+            size: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -73,4 +73,36 @@ impl<'a> Eq for MemtableIterator<'a> {}
 pub struct Memtable {
     pub(crate) size: Arc<AtomicUsize>,
     skip_map: Arc<SkipMap<Bytes, Bytes>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_put_and_get_items() {
+        let memtable = Memtable::new();
+        let _ = memtable.put(b"1", b"2");
+        let out = &memtable.get(b"1").unwrap()[..];
+
+        assert_eq!(b"2", out);
+    }
+
+    #[test]
+    fn memtable_grows_in_size_after_put() {
+        let memtable = Memtable::new();
+        let _ = memtable.put(b"1", b"2");
+
+        assert_eq!(2, memtable.get_size());
+    }
+
+    #[test]
+    #[should_panic]
+    fn key_not_found() {
+        let memtable = Memtable::new();
+        let _ = memtable.put(b"1", b"2");
+        let out = &memtable.get(b"5").unwrap()[..];
+
+        assert_eq!(b"-1", out);
+    }
 }

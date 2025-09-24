@@ -18,7 +18,7 @@ pub fn new(config: Config) -> Storage {
         config,
         state_lock: Mutex::new(()),
         state: RwLock::new(StorageState {
-            memtable: Arc::new(Memtable::new(0)),
+            memtable: Arc::new(Memtable::new()),
             frozen_memtables: Vec::new(),
         }),
     }
@@ -38,9 +38,7 @@ impl Storage {
         let guard = self.state.read().unwrap();
         let memtable = guard.memtable.clone();
 
-        if let Some(value) = memtable.get(key) {
-            Ok(value)
-        } else {
+        let Some(value) = memtable.get(key) else {
             for table in guard.frozen_memtables.clone() {
                 let value = table.get(key);
                 if value.is_some() {
@@ -48,8 +46,10 @@ impl Storage {
                 }
             }
 
-            Err(KeyNotFound)
-        }
+           return Err(KeyNotFound);
+        };
+
+        Ok(value)
     }
 
     fn try_freeze(&self) {
@@ -69,7 +69,7 @@ impl Storage {
         // check again, another thread might have frozen the memtable already.
         if memtable.get_size() > self.config.sst_size {
             guard.frozen_memtables.insert(0, memtable);
-            guard.memtable = Arc::new(Memtable::new(0));
+            guard.memtable = Arc::new(Memtable::new());
         }
     }
 
@@ -94,4 +94,5 @@ struct StorageState {
 #[derive(Debug)]
 pub struct Config {
     sst_size: usize,
+    memtable_size: usize,
 }
