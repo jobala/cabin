@@ -1,7 +1,4 @@
 #[test]
-fn full_memtables_are_frozen() {}
-
-#[test]
 fn get_returns_latest_entry() {}
 
 #[test]

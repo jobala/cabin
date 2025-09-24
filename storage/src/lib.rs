@@ -26,11 +26,16 @@ pub fn new(config: Config) -> Storage {
 
 impl Storage {
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        let guard = self.state.read().unwrap();
-        let memtable = guard.memtable.clone();
+        let mut size = 0;
 
-        memtable.put(key, value)?;
-        self.try_freeze();
+        {
+            let guard = self.state.read().unwrap();
+            let memtable = guard.memtable.clone();
+            memtable.put(key, value)?;
+            size = memtable.get_size();
+        }
+
+        self.try_freeze(size);
         Ok(())
     }
 
@@ -39,35 +44,31 @@ impl Storage {
         let memtable = guard.memtable.clone();
 
         let Some(value) = memtable.get(key) else {
-            for table in guard.frozen_memtables.clone() {
-                let value = table.get(key);
-                if value.is_some() {
-                    return Ok(value.unwrap());
+            for frozen_table in guard.frozen_memtables.clone() {
+                if let Some(value) = frozen_table.get(key) {
+                    return Ok(value);
                 }
             }
 
-           return Err(KeyNotFound);
+            return Err(KeyNotFound);
         };
 
         Ok(value)
     }
 
-    fn try_freeze(&self) {
-        let guard = self.state.read().unwrap();
-        let memtable = guard.memtable.clone();
-
-        if memtable.get_size() > self.config.sst_size {
+    fn try_freeze(&self, size: usize) {
+        if size >= self.config.sst_size {
             let lock = self.state_lock.lock().unwrap();
-            self.freeze(lock);
+            self.freeze(&lock);
         }
     }
 
-    fn freeze(&self, _state_lock: MutexGuard<()>) {
+    fn freeze(&self, _state_lock: &MutexGuard<()>) {
         let mut guard = self.state.write().unwrap();
         let memtable = guard.memtable.clone();
 
         // check again, another thread might have frozen the memtable already.
-        if memtable.get_size() > self.config.sst_size {
+        if memtable.get_size() >= self.config.sst_size {
             guard.frozen_memtables.insert(0, memtable);
             guard.memtable = Arc::new(Memtable::new());
         }
@@ -75,6 +76,25 @@ impl Storage {
 
     pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator {
         !unimplemented!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_memtables_are_frozen() {
+        let config = Config { sst_size: 4 };
+        let storage = new(config);
+
+        let input = vec![b"1", b"2", b"3", b"4", b"5"];
+        for entry in input {
+            storage.put(entry, entry).unwrap();
+        }
+
+        assert_eq!(2, storage.state.read().unwrap().frozen_memtables.len());
+        assert_eq!(2, storage.state.read().unwrap().memtable.get_size());
     }
 }
 
@@ -93,6 +113,5 @@ struct StorageState {
 
 #[derive(Debug)]
 pub struct Config {
-    sst_size: usize,
-    memtable_size: usize,
+    pub sst_size: usize,
 }

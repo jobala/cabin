@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use anyhow::Result;
@@ -32,7 +32,7 @@ impl Memtable {
     }
 
     pub fn get_size(&self) -> usize {
-        return self.size.load(Ordering::Relaxed);
+        self.size.load(Ordering::Relaxed)
     }
 
     pub fn iter(&self) -> MemtableIterator<'_> {
