@@ -1,6 +1,6 @@
 use std::{
     ops::Bound,
-    sync::{atomic::Ordering::Relaxed, Arc, RwLock},
+    sync::{Arc, Mutex, MutexGuard, RwLock},
 };
 
 use crate::{
@@ -12,9 +12,11 @@ use bytes::Bytes;
 
 mod common;
 mod memtable;
-pub fn new(config: &Config) -> Storage {
+
+pub fn new(config: Config) -> Storage {
     Storage {
-        capacity: config.memtable_capacity,
+        config,
+        state_lock: Mutex::new(()),
         state: RwLock::new(StorageState {
             memtable: Arc::new(Memtable::new(0)),
             frozen_memtables: Vec::new(),
@@ -24,13 +26,11 @@ pub fn new(config: &Config) -> Storage {
 
 impl Storage {
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        self.try_freeze();
-
         let guard = self.state.read().unwrap();
         let memtable = guard.memtable.clone();
 
-        let _ = memtable.put(key, value);
-
+        memtable.put(key, value)?;
+        self.try_freeze();
         Ok(())
     }
 
@@ -53,12 +53,23 @@ impl Storage {
     }
 
     fn try_freeze(&self) {
+        let guard = self.state.read().unwrap();
+        let memtable = guard.memtable.clone();
+
+        if memtable.get_size() > self.config.sst_size {
+            let lock = self.state_lock.lock().unwrap();
+            self.freeze(lock);
+        }
+    }
+
+    fn freeze(&self, _state_lock: MutexGuard<()>) {
         let mut guard = self.state.write().unwrap();
         let memtable = guard.memtable.clone();
 
-        if memtable.size.load(Relaxed) > self.capacity {
+        // check again, another thread might have frozen the memtable already.
+        if memtable.get_size() > self.config.sst_size {
             guard.frozen_memtables.insert(0, memtable);
-            guard.memtable = Arc::new(Memtable::new(0))
+            guard.memtable = Arc::new(Memtable::new(0));
         }
     }
 
@@ -70,7 +81,8 @@ impl Storage {
 #[derive(Debug)]
 pub struct Storage {
     state: RwLock<StorageState>,
-    capacity: usize,
+    state_lock: Mutex<()>,
+    config: Config,
 }
 
 #[derive(Debug)]
@@ -79,6 +91,7 @@ struct StorageState {
     frozen_memtables: Vec<Arc<Memtable>>,
 }
 
+#[derive(Debug)]
 pub struct Config {
-    memtable_capacity: usize,
+    sst_size: usize,
 }

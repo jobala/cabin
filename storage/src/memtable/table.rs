@@ -31,6 +31,10 @@ impl Memtable {
         self.skip_map.get(key).map(|k| k.value().clone())
     }
 
+    pub fn get_size(&self) -> usize {
+        return self.size.load(Ordering::Relaxed);
+    }
+
     pub fn iter(&self) -> MemtableIterator<'_> {
         let mut iter = self.skip_map.iter();
         let current = iter.next();
