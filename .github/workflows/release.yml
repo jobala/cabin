@@ -24,6 +24,7 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
+          components: rustfmt
           override: true
 
       - name: install cargo-nextest
@@ -34,7 +35,6 @@ jobs:
 
       # - name: run clippy
       #   run: cargo clippy --all-targets -- -D warnings
-
       - name: check formatting
         run: cargo fmt --all --check
 
