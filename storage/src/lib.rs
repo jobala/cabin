@@ -26,7 +26,7 @@ pub fn new(config: Config) -> Storage {
 
 impl Storage {
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        let mut size = 0;
+        let size;
 
         {
             let guard = self.state.read().unwrap();
@@ -79,25 +79,6 @@ impl Storage {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn full_memtables_are_frozen() {
-        let config = Config { sst_size: 4 };
-        let storage = new(config);
-
-        let input = vec![b"1", b"2", b"3", b"4", b"5"];
-        for entry in input {
-            storage.put(entry, entry).unwrap();
-        }
-
-        assert_eq!(2, storage.state.read().unwrap().frozen_memtables.len());
-        assert_eq!(2, storage.state.read().unwrap().memtable.get_size());
-    }
-}
-
 #[derive(Debug)]
 pub struct Storage {
     state: RwLock<StorageState>,
@@ -114,4 +95,23 @@ struct StorageState {
 #[derive(Debug)]
 pub struct Config {
     pub sst_size: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filled_up_memtables_are_frozen() {
+        let config = Config { sst_size: 4 };
+        let storage = new(config);
+
+        let input = vec![b"1", b"2", b"3", b"4", b"5"];
+        for entry in input {
+            storage.put(entry, entry).unwrap();
+        }
+
+        assert_eq!(2, storage.state.read().unwrap().frozen_memtables.len());
+        assert_eq!(2, storage.state.read().unwrap().memtable.get_size());
+    }
 }
