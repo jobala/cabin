@@ -2,5 +2,8 @@
 name = "cabin-vdbe"
 version = "0.0.0"
 edition = "2024"
+license = "AGPL-3.0"
+description = "a virtual database engine"
+
 
 [dependencies]

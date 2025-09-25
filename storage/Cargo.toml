@@ -2,6 +2,8 @@
 name = "cabin-storage"
 version = "0.1.1"
 edition = "2024"
+license = "AGPL-3.0"
+description = "LSMTree based storage engine"
 
 [dependencies]
 anyhow = "1.0.99"

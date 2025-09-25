@@ -2,5 +2,7 @@
 name = "cabin-db"
 version = "0.0.0"
 edition = "2024"
+license = "AGPL-3.0"
+description = "embedded document database"
 
 [dependencies]
