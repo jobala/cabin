@@ -73,10 +73,6 @@ impl Storage {
             guard.memtable = Arc::new(Memtable::new());
         }
     }
-
-    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator {
-        !unimplemented!()
-    }
 }
 
 #[derive(Debug)]
