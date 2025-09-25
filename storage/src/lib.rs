@@ -1,12 +1,6 @@
-use std::{
-    ops::Bound,
-    sync::{Arc, Mutex, MutexGuard, RwLock},
-};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
-use crate::{
-    common::errors::KeyNotFound,
-    memtable::{iterator::MemtableIterator, table::Memtable},
-};
+use crate::{common::errors::KeyNotFound, memtable::table::Memtable};
 use anyhow::Result;
 use bytes::Bytes;
 
