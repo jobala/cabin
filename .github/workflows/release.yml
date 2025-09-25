@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -36,6 +39,7 @@ jobs:
         run: cargo nextest run
 
       - name: release
+        if: github.ref == '/refs/head/main'
         uses: release-plz/action@v0.5
         with:
           command: release-pr
