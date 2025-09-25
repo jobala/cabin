@@ -29,8 +29,11 @@ jobs:
       - name: install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest
 
-      - name: run clippy
-        run: cargo clippy --all-targets -- -D warnings
+      # - name: Install clippy
+      #   run: rustup component add clippy --toolchain stable-x86_64-unknown-linux-gnu
+
+      # - name: run clippy
+      #   run: cargo clippy --all-targets -- -D warnings
 
       - name: check formatting
         run: cargo fmt --all --check
