@@ -8,21 +8,25 @@ publish_timeout = "10m" # set a timeout for `cargo publish`
 name = "cabin-cli"
 semver_check = true
 changelog_path = "cli/docs/CHANGELOG.md"
+publish=true
 
 [[package]]
 name = "cabin-db"
 semver_check = true
 changelog_path = "db/docs/CHANGELOG.md"
+publish=true
 
 [[package]]
 name = "cabin-storage"
 semver_check = true
 changelog_path = "storage/docs/CHANGELOG.md"
+publish=true
 
 [[package]]
 name = "cabin-vdbe"
 semver_check = true
 changelog_path = "vdbe/docs/CHANGELOG.md"
+publish=true
 
 
 [changelog]
