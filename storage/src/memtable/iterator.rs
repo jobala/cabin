@@ -1,11 +1,13 @@
+use std::ops::{Bound, RangeBounds};
+
 use bytes::Bytes;
-use crossbeam_skiplist::map::{Entry, Iter};
+use crossbeam_skiplist::map::{Entry, Range};
 
 use crate::common::errors::KeyNotFound;
 
 #[derive(Debug)]
 pub struct MemtableIterator<'a> {
-    pub(crate) iter: Iter<'a, Bytes, Bytes>,
+    pub(crate) iter: Range<'a, Bytes, (Bound<Bytes>, Bound<Bytes>), Bytes, Bytes>,
     pub(crate) current: Option<Entry<'a, Bytes, Bytes>>,
 }
 

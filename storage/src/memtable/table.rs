@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    ops::Bound,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use anyhow::Result;
@@ -35,11 +38,22 @@ impl Memtable {
         self.size.load(Ordering::Relaxed)
     }
 
-    pub fn iter(&self) -> MemtableIterator<'_> {
-        let mut iter = self.skip_map.iter();
-        let current = iter.next();
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator<'_> {
+        let mut range = self.skip_map.range((map_bound(lower), map_bound(upper)));
+        let current = range.next();
 
-        MemtableIterator { iter, current }
+        MemtableIterator {
+            iter: range,
+            current,
+        }
+    }
+}
+
+pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
+    match bound {
+        Bound::Included(x) => Bound::Included(Bytes::copy_from_slice(x)),
+        Bound::Excluded(x) => Bound::Excluded(Bytes::copy_from_slice(x)),
+        Bound::Unbounded => Bound::Unbounded,
     }
 }
 
