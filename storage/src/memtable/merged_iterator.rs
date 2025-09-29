@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 use crate::{
     common::errors::KeyNotFound,
     memtable::iterator::{MemtableIterator, StorageIterator},
@@ -42,11 +44,30 @@ impl<'a> StorageIterator for MergedIterator<'a> {
     }
 
     fn next(&mut self) -> anyhow::Result<()> {
-        if let Some(top_iter) = self.heap.pop() {
-            top_iter.next()?;
+        if self.heap.is_empty() {
+            return Ok(());
+        }
 
-            if top_iter.is_valid() {
-                self.heap.push(top_iter);
+        let current_key = {
+            let top = self.heap.peek().unwrap();
+            Bytes::copy_from_slice(top.key().unwrap())
+        };
+
+        let mut entries_with_same_key = vec![];
+
+        while let Some(top) = self.heap.peek() {
+            if top.key().unwrap() == current_key {
+                entries_with_same_key.push(self.heap.pop().unwrap());
+            } else {
+                break;
+            }
+        }
+
+        for entry in entries_with_same_key {
+            entry.next()?;
+
+            if entry.is_valid() {
+                self.heap.push(entry);
             }
         }
         Ok(())
