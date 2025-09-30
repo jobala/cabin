@@ -1,8 +1,8 @@
 use std::{
     ops::Bound,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -56,32 +56,6 @@ pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
         Bound::Unbounded => Bound::Unbounded,
     }
 }
-
-impl<'a> PartialOrd for MemtableIterator<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> Ord for MemtableIterator<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let v1 = self.current.as_ref().unwrap().key();
-        let v2 = other.current.as_ref().unwrap().key();
-
-        v1.cmp(v2)
-    }
-}
-
-impl<'a> PartialEq for MemtableIterator<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        let v1 = self.current.as_ref().unwrap().key();
-        let v2 = other.current.as_ref().unwrap().key();
-
-        v1 == v2
-    }
-}
-
-impl<'a> Eq for MemtableIterator<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct Memtable {

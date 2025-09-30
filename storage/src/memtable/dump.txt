@@ -1,7 +1,0 @@
-a -> 1, b -> 2
-a -> 3, b -> 6
-a -> 4
-
-How do we get the merge iterator to show only the latest?
-    -> will need to compare current value of all iterators
-    -> pick the latest one and ignore the rest by moving the cursor forward
