@@ -1,17 +1,14 @@
 use bytes::Bytes;
 
-use crate::{
-    common::errors::KeyNotFound,
-    memtable::iterator::{MemtableIterator, StorageIterator},
-};
+use crate::memtable::iterator::{MemtableIterator, StorageIterator};
 use std::collections::BinaryHeap;
 
-struct MergedIterator<'a> {
-    heap: BinaryHeap<HeapEntry<'a>>,
+struct MergedIterator {
+    heap: BinaryHeap<HeapEntry>,
 }
 
-impl<'a> MergedIterator<'a> {
-    pub fn new(iterators: Vec<MemtableIterator<'a>>) -> Self {
+impl MergedIterator {
+    pub fn new(iterators: Vec<MemtableIterator>) -> Self {
         let mut heap = BinaryHeap::new();
 
         for iter in iterators {
@@ -22,23 +19,13 @@ impl<'a> MergedIterator<'a> {
     }
 }
 
-impl<'a> StorageIterator for MergedIterator<'a> {
-    fn value(&self) -> Option<&[u8]> {
-        match self.heap.peek()?.iter.current.as_ref() {
-            Some(item) => Some(item.value()),
-            None => None,
-        }
+impl StorageIterator for MergedIterator {
+    fn value(&self) -> &[u8] {
+        self.heap.peek().unwrap().iter.value()
     }
 
-    fn key(&self) -> Result<&[u8], KeyNotFound> {
-        if let Some(heap_entry) = self.heap.peek() {
-            match heap_entry.iter.current.as_ref() {
-                Some(item) => Ok(item.key()),
-                None => Err(KeyNotFound),
-            }
-        } else {
-            Err(KeyNotFound)
-        }
+    fn key(&self) -> &[u8] {
+        self.heap.peek().unwrap().iter.key()
     }
 
     fn is_valid(&self) -> bool {
@@ -52,12 +39,12 @@ impl<'a> StorageIterator for MergedIterator<'a> {
 
         let current_key = {
             let top = self.heap.peek().unwrap();
-            Bytes::copy_from_slice(top.iter.key().unwrap())
+            Bytes::copy_from_slice(top.iter.key())
         };
 
         let mut entries_with_same_key = vec![];
         while let Some(top) = self.heap.peek() {
-            if top.iter.key().unwrap() == current_key {
+            if top.iter.key() == current_key {
                 entries_with_same_key.push(self.heap.pop().unwrap());
             } else {
                 break;
@@ -75,33 +62,33 @@ impl<'a> StorageIterator for MergedIterator<'a> {
     }
 }
 
-struct HeapEntry<'a> {
-    iter: MemtableIterator<'a>,
+struct HeapEntry {
+    iter: MemtableIterator,
 }
 
-impl<'a> HeapEntry<'a> {
-    fn new(iter: MemtableIterator<'a>) -> Self {
+impl HeapEntry {
+    fn new(iter: MemtableIterator) -> Self {
         HeapEntry { iter }
     }
 }
 
-impl<'a> Ord for HeapEntry<'a> {
+impl Ord for HeapEntry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.iter.key().ok().cmp(&self.iter.key().ok())
+        other.iter.key().cmp(&self.iter.key())
     }
 }
 
-impl<'a> PartialOrd for HeapEntry<'a> {
+impl PartialOrd for HeapEntry {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'a> Eq for HeapEntry<'a> {}
+impl Eq for HeapEntry {}
 
-impl<'a> PartialEq for HeapEntry<'a> {
+impl PartialEq for HeapEntry {
     fn eq(&self, other: &Self) -> bool {
-        self.iter.key().ok() == other.iter.key().ok()
+        self.iter.key() == other.iter.key()
     }
 }
 
@@ -132,7 +119,7 @@ mod test {
         let mut merged_iters = MergedIterator::new(iterators);
 
         while merged_iters.is_valid() {
-            let (key, value) = (merged_iters.key().unwrap(), merged_iters.value().unwrap());
+            let (key, value) = (merged_iters.key(), merged_iters.value());
 
             println!(
                 "{} {}",
@@ -150,4 +137,19 @@ mod test {
     #[test]
     #[ignore]
     fn skips_deleted_keys() {}
+
+    fn create_iterators(items: Vec<Vec<&[u8]>>) -> Vec<MemtableIterator> {
+        let mut res = vec![];
+        let memtable = Memtable::new();
+
+        for item in items {
+            for key in item {
+                memtable.put(key, key);
+            }
+
+            res.push(memtable.scan(Unbounded, Unbounded));
+        }
+
+        res
+    }
 }

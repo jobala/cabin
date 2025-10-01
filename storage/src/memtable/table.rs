@@ -38,22 +38,8 @@ impl Memtable {
         self.size.load(Ordering::Relaxed)
     }
 
-    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator<'_> {
-        let mut range = self.skip_map.range((map_bound(lower), map_bound(upper)));
-        let current = range.next();
-
-        MemtableIterator {
-            iter: range,
-            current,
-        }
-    }
-}
-
-pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
-    match bound {
-        Bound::Included(x) => Bound::Included(Bytes::copy_from_slice(x)),
-        Bound::Excluded(x) => Bound::Excluded(Bytes::copy_from_slice(x)),
-        Bound::Unbounded => Bound::Unbounded,
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator {
+        MemtableIterator::create(self.skip_map.clone(), lower, upper)
     }
 }
 
