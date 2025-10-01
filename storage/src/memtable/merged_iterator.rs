@@ -95,56 +95,71 @@ impl PartialEq for HeapEntry {
 #[cfg(test)]
 mod test {
     use crate::memtable::table::Memtable;
-    use std::ops::Bound::Unbounded;
+    use std::{collections::HashMap, ops::Bound::Unbounded};
 
     use super::*;
 
     #[test]
     fn test_iterates_through_all_iterators() {
-        let iter1 = Memtable::new();
-        let iter2 = Memtable::new();
-        let iter3 = Memtable::new();
+        let mut map1 = HashMap::new();
+        map1.insert(b"b", b"2");
 
-        let _ = iter3.put(b"3", b"3");
-        let _ = iter1.put(b"1", b"1");
-        let _ = iter2.put(b"2", b"2");
+        let mut map2 = HashMap::new();
+        map2.insert(b"a", b"1");
 
-        let iterators = vec![
-            iter1.scan(Unbounded, Unbounded),
-            iter2.scan(Unbounded, Unbounded),
-            iter3.scan(Unbounded, Unbounded),
-        ];
+        let mut map3 = HashMap::new();
+        map3.insert(b"e", b"4");
 
-        // Pass as mutable slice
+        let iterators = create_iterators(vec![map1, map2, map3]);
         let mut merged_iters = MergedIterator::new(iterators);
 
+        let mut res = Vec::new();
         while merged_iters.is_valid() {
-            let (key, value) = (merged_iters.key(), merged_iters.value());
+            let value = merged_iters.value().to_vec();
+            res.push(value);
 
-            println!(
-                "{} {}",
-                String::from_utf8_lossy(key),
-                String::from_utf8_lossy(value)
-            );
             let _ = merged_iters.next();
         }
+
+        assert_eq!(res, vec![b"1", b"2", b"4"])
     }
 
     #[test]
-    #[ignore]
-    fn handles_duplicate_entries_across_iterators() {}
+    fn handles_duplicate_entries_across_iterators() {
+        let mut map1 = HashMap::new();
+        map1.insert(b"c", b"4");
+        map1.insert(b"d", b"5");
 
-    #[test]
-    #[ignore]
-    fn skips_deleted_keys() {}
+        let mut map2 = HashMap::new();
+        map2.insert(b"a", b"1");
+        map2.insert(b"b", b"2");
+        map2.insert(b"c", b"3");
 
-    fn create_iterators(items: Vec<Vec<&[u8]>>) -> Vec<MemtableIterator> {
+        let mut map3 = HashMap::new();
+        map3.insert(b"e", b"6");
+
+        let iterators = create_iterators(vec![map1, map2, map3]);
+        let mut merged_iters = MergedIterator::new(iterators);
+
+        let mut res = Vec::new();
+        while merged_iters.is_valid() {
+            let value = merged_iters.value().to_vec();
+            res.push(value);
+
+            let _ = merged_iters.next();
+        }
+
+        assert_eq!(res, vec![b"1", b"2", b"4", b"5", b"6"])
+    }
+
+    fn create_iterators(items: Vec<HashMap<&[u8; 1], &[u8; 1]>>) -> Vec<MemtableIterator> {
         let mut res = vec![];
-        let memtable = Memtable::new();
 
         for item in items {
-            for key in item {
-                memtable.put(key, key);
+            let memtable = Memtable::new();
+
+            for (key, val) in item {
+                let _ = memtable.put(key, val);
             }
 
             res.push(memtable.scan(Unbounded, Unbounded));

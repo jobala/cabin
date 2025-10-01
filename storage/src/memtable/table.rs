@@ -1,8 +1,8 @@
 use std::{
     ops::Bound,
     sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     },
 };
 
