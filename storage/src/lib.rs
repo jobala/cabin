@@ -1,6 +1,13 @@
-use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+use std::{
+    ops::Bound,
+    sync::{Arc, Mutex, MutexGuard, RwLock},
+};
 
-use crate::{common::errors::KeyNotFound, memtable::memtable::Memtable};
+use crate::{
+    common::errors::KeyNotFound,
+    iterators::{lsm_iterator::LsmIterator, merged_iterator::MergedIterator},
+    memtable::memtable::Memtable,
+};
 use anyhow::Result;
 use bytes::Bytes;
 
@@ -49,6 +56,19 @@ impl Storage {
         };
 
         Ok(value)
+    }
+
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> LsmIterator {
+        let guard = self.state.read().unwrap();
+        let mut iters = vec![];
+
+        let frozen_tables = &guard.frozen_memtables;
+        for frozen_table in frozen_tables.iter().rev() {
+            iters.push(frozen_table.scan(lower, upper));
+        }
+        iters.push(guard.memtable.scan(lower, upper));
+
+        LsmIterator::new(MergedIterator::new(iters))
     }
 
     fn try_freeze(&self, size: usize) {
