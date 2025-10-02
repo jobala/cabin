@@ -1,8 +1,8 @@
 use std::{
     ops::Bound,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -10,7 +10,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_skiplist::SkipMap;
 
-use crate::memtable::iterator::MemtableIterator;
+use crate::memtable::memtable_iterator::MemtableIterator;
 
 impl Memtable {
     pub fn new() -> Self {

@@ -7,6 +7,18 @@ use crossbeam_skiplist::{
 };
 use ouroboros::self_referencing;
 
+use crate::common::iterator::StorageIterator;
+
+#[self_referencing]
+pub struct MemtableIterator {
+    pub(crate) map: Arc<SkipMap<Bytes, Bytes>>,
+    pub(crate) item: (Bytes, Bytes),
+
+    #[borrows(map)]
+    #[not_covariant]
+    pub(crate) iter: Range<'this, Bytes, (Bound<Bytes>, Bound<Bytes>), Bytes, Bytes>,
+}
+
 impl MemtableIterator {
     pub fn create(
         skip_map: Arc<SkipMap<Bytes, Bytes>>,
@@ -58,20 +70,4 @@ pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
         Bound::Excluded(x) => Bound::Excluded(Bytes::copy_from_slice(x)),
         Bound::Unbounded => Bound::Unbounded,
     }
-}
-#[self_referencing]
-pub struct MemtableIterator {
-    pub(crate) map: Arc<SkipMap<Bytes, Bytes>>,
-    pub(crate) item: (Bytes, Bytes),
-
-    #[borrows(map)]
-    #[not_covariant]
-    pub(crate) iter: Range<'this, Bytes, (Bound<Bytes>, Bound<Bytes>), Bytes, Bytes>,
-}
-
-pub trait StorageIterator {
-    fn value(&self) -> &[u8];
-    fn key(&self) -> &[u8];
-    fn is_valid(&self) -> bool;
-    fn next(&mut self) -> anyhow::Result<()>;
 }

@@ -1,10 +1,11 @@
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
-use crate::{common::errors::KeyNotFound, memtable::table::Memtable};
+use crate::{common::errors::KeyNotFound, memtable::memtable::Memtable};
 use anyhow::Result;
 use bytes::Bytes;
 
 mod common;
+mod iterators;
 mod memtable;
 
 pub fn new(config: Config) -> Storage {

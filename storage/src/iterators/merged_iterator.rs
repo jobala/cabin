@@ -1,14 +1,15 @@
 use bytes::Bytes;
 
-use crate::memtable::iterator::{MemtableIterator, StorageIterator};
 use std::collections::BinaryHeap;
 
-struct MergedIterator {
-    heap: BinaryHeap<HeapEntry>,
+use crate::common::iterator::StorageIterator;
+
+pub struct MergedIterator<T> {
+    heap: BinaryHeap<HeapEntry<T>>,
 }
 
-impl MergedIterator {
-    pub fn new(iterators: Vec<MemtableIterator>) -> Self {
+impl<T: StorageIterator> MergedIterator<T> {
+    pub fn new(iterators: Vec<T>) -> Self {
         let mut heap = BinaryHeap::new();
 
         for iter in iterators {
@@ -19,7 +20,7 @@ impl MergedIterator {
     }
 }
 
-impl StorageIterator for MergedIterator {
+impl<T: StorageIterator> StorageIterator for MergedIterator<T> {
     fn value(&self) -> &[u8] {
         self.heap.peek().unwrap().iter.value()
     }
@@ -62,31 +63,31 @@ impl StorageIterator for MergedIterator {
     }
 }
 
-struct HeapEntry {
-    iter: MemtableIterator,
+struct HeapEntry<T> {
+    iter: T,
 }
 
-impl HeapEntry {
-    fn new(iter: MemtableIterator) -> Self {
+impl<T: StorageIterator> HeapEntry<T> {
+    fn new(iter: T) -> Self {
         HeapEntry { iter }
     }
 }
 
-impl Ord for HeapEntry {
+impl<T: StorageIterator> Ord for HeapEntry<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.iter.key().cmp(&self.iter.key())
+        other.iter.key().cmp(self.iter.key())
     }
 }
 
-impl PartialOrd for HeapEntry {
+impl<T: StorageIterator> PartialOrd for HeapEntry<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Eq for HeapEntry {}
+impl<T: StorageIterator> Eq for HeapEntry<T> {}
 
-impl PartialEq for HeapEntry {
+impl<T: StorageIterator> PartialEq for HeapEntry<T> {
     fn eq(&self, other: &Self) -> bool {
         self.iter.key() == other.iter.key()
     }
@@ -94,7 +95,7 @@ impl PartialEq for HeapEntry {
 
 #[cfg(test)]
 mod test {
-    use crate::memtable::table::Memtable;
+    use crate::memtable::{memtable::Memtable, memtable_iterator::MemtableIterator};
     use std::{collections::HashMap, ops::Bound::Unbounded};
 
     use super::*;
