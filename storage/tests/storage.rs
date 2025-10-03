@@ -1,5 +1,5 @@
-use cabin_storage::common::iterator::StorageIterator;
 use cabin_storage::Config;
+use cabin_storage::common::iterator::StorageIterator;
 use std::ops::Bound::Unbounded;
 
 #[test]
