@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/jobala/cabin/compare/cabin-storage-v0.1.1...cabin-storage-v0.1.2) - 2025-10-03
+
+### Added
+
+- adds scan(lower, upper) ([#9](https://github.com/jobala/cabin/pull/9))
+
 ## [0.1.1](https://github.com/jobala/cabin/releases/tag/cabin-storage-v0.1.1) - 2025-09-25
 
 ### Other
