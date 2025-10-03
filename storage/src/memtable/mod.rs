@@ -1,3 +1,2 @@
-pub mod iterator;
-pub mod merged_iterator;
+pub mod memtable_iterator;
 pub mod table;

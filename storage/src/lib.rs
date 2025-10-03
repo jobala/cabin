@@ -1,18 +1,44 @@
-use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+use std::{
+    ops::Bound,
+    sync::{Arc, Mutex, MutexGuard, RwLock},
+};
 
-use crate::{common::errors::KeyNotFound, memtable::table::Memtable};
+use crate::{
+    common::errors::KeyNotFound,
+    iterators::{lsm_iterator::LsmIterator, merged_iterator::MergedIterator},
+    memtable::table::Memtable,
+};
 use anyhow::Result;
 use bytes::Bytes;
 
-mod common;
-mod memtable;
+pub mod common;
+pub mod iterators;
+pub mod memtable;
+
+#[derive(Debug)]
+pub struct Storage {
+    state: RwLock<StorageState>,
+    state_lock: Mutex<()>,
+    config: Config,
+}
+
+#[derive(Debug)]
+struct StorageState {
+    memtable: Arc<Memtable>,
+    frozen_memtables: Vec<Arc<Memtable>>,
+}
+
+#[derive(Debug)]
+pub struct Config {
+    pub sst_size: usize,
+}
 
 pub fn new(config: Config) -> Storage {
     Storage {
         config,
         state_lock: Mutex::new(()),
         state: RwLock::new(StorageState {
-            memtable: Arc::new(Memtable::new()),
+            memtable: Arc::new(Memtable::default()),
             frozen_memtables: Vec::new(),
         }),
     }
@@ -50,6 +76,21 @@ impl Storage {
         Ok(value)
     }
 
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> LsmIterator {
+        let guard = self.state.read().unwrap();
+        let mut iters = vec![];
+
+        // insert memtables from newest to oldest
+        iters.push(guard.memtable.scan(lower, upper));
+
+        let frozen_tables = &guard.frozen_memtables;
+        for frozen_table in frozen_tables {
+            iters.push(frozen_table.scan(lower, upper));
+        }
+
+        LsmIterator::new(MergedIterator::new(iters))
+    }
+
     fn try_freeze(&self, size: usize) {
         if size >= self.config.sst_size {
             let lock = self.state_lock.lock().unwrap();
@@ -64,29 +105,10 @@ impl Storage {
         // check again, another thread might have frozen the memtable already.
         if memtable.get_size() >= self.config.sst_size {
             guard.frozen_memtables.insert(0, memtable);
-            guard.memtable = Arc::new(Memtable::new());
+            guard.memtable = Arc::new(Memtable::default());
         }
     }
 }
-
-#[derive(Debug)]
-pub struct Storage {
-    state: RwLock<StorageState>,
-    state_lock: Mutex<()>,
-    config: Config,
-}
-
-#[derive(Debug)]
-struct StorageState {
-    memtable: Arc<Memtable>,
-    frozen_memtables: Vec<Arc<Memtable>>,
-}
-
-#[derive(Debug)]
-pub struct Config {
-    pub sst_size: usize,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

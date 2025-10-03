@@ -3,28 +3,27 @@ dependencies_update = true
 pr_branch_prefix = "release-"
 pr_labels = ["release"] # add the `release` label to the release Pull Request
 publish_timeout = "10m" # set a timeout for `cargo publish`
+git_release_enable = false
+publish_allow_dirty = false
+git_tag_enable = true
 
 [[package]]
 name = "cabin-cli"
-semver_check = true
 changelog_path = "cli/docs/CHANGELOG.md"
 publish=true
 
 [[package]]
 name = "cabin-db"
-semver_check = true
 changelog_path = "db/docs/CHANGELOG.md"
 publish=true
 
 [[package]]
 name = "cabin-storage"
-semver_check = true
 changelog_path = "storage/docs/CHANGELOG.md"
 publish=true
 
 [[package]]
 name = "cabin-vdbe"
-semver_check = true
 changelog_path = "vdbe/docs/CHANGELOG.md"
 publish=true
 
