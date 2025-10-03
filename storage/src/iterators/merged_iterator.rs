@@ -89,7 +89,7 @@ impl<T: StorageIterator> Eq for HeapEntry<T> {}
 
 impl<T: StorageIterator> PartialEq for HeapEntry<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == cmp::Ordering::Equal
+        self.iter.key() == other.iter.key()
     }
 }
 

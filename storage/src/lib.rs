@@ -81,7 +81,7 @@ impl Storage {
         let mut iters = vec![];
 
         let frozen_tables = &guard.frozen_memtables;
-        for frozen_table in frozen_tables.iter().rev() {
+        for frozen_table in frozen_tables {
             iters.push(frozen_table.scan(lower, upper));
         }
         iters.push(guard.memtable.scan(lower, upper));
