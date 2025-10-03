@@ -69,20 +69,14 @@ fn scan_items() {
 
     let mut iter = storage.scan(Unbounded, Unbounded);
     while iter.is_valid() {
-        println!(
-            "{} -> {}",
-            str::from_utf8(iter.key()).unwrap(),
-            str::from_utf8(iter.value()).unwrap()
-        );
-
-        expected_keys.push(iter.value().to_vec());
+        expected_keys.push(iter.key().to_vec());
         expected_values.push(iter.value().to_vec());
 
         let _ = iter.next();
     }
 
     assert_eq!(expected_keys, vec![b"a", b"c", b"d", b"e",]);
-    assert_eq!(expected_keys, vec![b"1", b"4", b"5", b"4",]);
+    assert_eq!(expected_values, vec![b"1", b"4", b"5", b"4",]);
 }
 
 #[test]
