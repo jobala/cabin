@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use std::collections::BinaryHeap;
+use std::{cmp, collections::BinaryHeap, str::from_utf8};
 
 use crate::common::iterator::StorageIterator;
 
@@ -12,8 +12,10 @@ impl<T: StorageIterator> MergedIterator<T> {
     pub fn new(iterators: Vec<T>) -> Self {
         let mut heap = BinaryHeap::new();
 
+        let mut idx = 0usize;
         for iter in iterators {
-            heap.push(HeapEntry::new(iter));
+            heap.push(HeapEntry::new(idx, iter));
+            idx += 1;
         }
 
         MergedIterator { heap }
@@ -64,18 +66,23 @@ impl<T: StorageIterator> StorageIterator for MergedIterator<T> {
 }
 
 struct HeapEntry<T> {
+    idx: usize,
     iter: T,
 }
 
 impl<T: StorageIterator> HeapEntry<T> {
-    fn new(iter: T) -> Self {
-        HeapEntry { iter }
+    fn new(idx: usize, iter: T) -> Self {
+        HeapEntry { idx, iter }
     }
 }
 
 impl<T: StorageIterator> Ord for HeapEntry<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.iter.key().cmp(self.iter.key())
+        self.iter
+            .key()
+            .cmp(other.iter.key())
+            .then(self.idx.cmp(&other.idx))
+            .reverse()
     }
 }
 
@@ -89,7 +96,7 @@ impl<T: StorageIterator> Eq for HeapEntry<T> {}
 
 impl<T: StorageIterator> PartialEq for HeapEntry<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.iter.key() == other.iter.key()
+        self.cmp(other) == cmp::Ordering::Equal
     }
 }
 

@@ -80,11 +80,13 @@ impl Storage {
         let guard = self.state.read().unwrap();
         let mut iters = vec![];
 
+        // insert memtables from newest to oldest
+        iters.push(guard.memtable.scan(lower, upper));
+
         let frozen_tables = &guard.frozen_memtables;
         for frozen_table in frozen_tables {
             iters.push(frozen_table.scan(lower, upper));
         }
-        iters.push(guard.memtable.scan(lower, upper));
 
         LsmIterator::new(MergedIterator::new(iters))
     }

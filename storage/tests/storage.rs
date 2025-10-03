@@ -44,11 +44,6 @@ fn get_invalid_key() {
     storage.get(b"1").unwrap();
 }
 
-/**
- * iter1: b->del, c->4, d->5
-iter2: a->1, b->2, c->3
-iter3: e->4
- */
 #[test]
 fn scan_items() {
     let config = Config { sst_size: 2 };
