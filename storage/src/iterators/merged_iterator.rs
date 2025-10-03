@@ -4,7 +4,7 @@ use std::{cmp, collections::BinaryHeap, str::from_utf8};
 
 use crate::common::iterator::StorageIterator;
 
-pub struct MergedIterator<T> {
+pub struct MergedIterator<T: StorageIterator> {
     heap: BinaryHeap<HeapEntry<T>>,
 }
 
@@ -12,10 +12,8 @@ impl<T: StorageIterator> MergedIterator<T> {
     pub fn new(iterators: Vec<T>) -> Self {
         let mut heap = BinaryHeap::new();
 
-        let mut idx = 0usize;
-        for iter in iterators {
+        for (idx, iter) in iterators.into_iter().enumerate() {
             heap.push(HeapEntry::new(idx, iter));
-            idx += 1;
         }
 
         MergedIterator { heap }
@@ -152,13 +150,6 @@ mod test {
         let mut res = Vec::new();
         while merged_iters.is_valid() {
             let value = merged_iters.value().to_vec();
-            let key = merged_iters.key().to_vec();
-
-            println!(
-                "{} -> {}",
-                from_utf8(&key[..]).unwrap(),
-                from_utf8(&value[..]).unwrap()
-            );
 
             res.push(value);
             let _ = merged_iters.next();

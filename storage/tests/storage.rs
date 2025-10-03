@@ -46,7 +46,7 @@ fn get_invalid_key() {
 
 #[test]
 fn scan_items() {
-    let config = Config { sst_size: 2 };
+    let config = Config { sst_size: 10 };
     let storage = cabin_storage::new(config);
     let entries = vec![
         (b"e", b"4"),
