@@ -89,14 +89,14 @@ impl<T: StorageIterator> Eq for HeapEntry<T> {}
 
 impl<T: StorageIterator> PartialEq for HeapEntry<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.iter.key() == other.iter.key()
+        self.cmp(other) == cmp::Ordering::Equal
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::memtable::{memtable::Memtable, memtable_iterator::MemtableIterator};
-    use std::{collections::HashMap, ops::Bound::Unbounded};
+    use std::{collections::HashMap, ops::Bound::Unbounded, str::from_utf8};
 
     use super::*;
 
@@ -137,7 +137,7 @@ mod test {
         map2.insert(b"c", b"3");
 
         let mut map3 = HashMap::new();
-        map3.insert(b"e", b"6");
+        map3.insert(b"e", b"4");
 
         let iterators = create_iterators(vec![map1, map2, map3]);
         let mut merged_iters = MergedIterator::new(iterators);
@@ -145,19 +145,26 @@ mod test {
         let mut res = Vec::new();
         while merged_iters.is_valid() {
             let value = merged_iters.value().to_vec();
-            res.push(value);
+            let key = merged_iters.key().to_vec();
 
+            println!(
+                "{} -> {}",
+                from_utf8(&key[..]).unwrap(),
+                from_utf8(&value[..]).unwrap()
+            );
+
+            res.push(value);
             let _ = merged_iters.next();
         }
 
-        assert_eq!(res, vec![b"1", b"2", b"4", b"5", b"6"])
+        assert_eq!(res, vec![b"1", b"2", b"4", b"5", b"4"])
     }
 
     fn create_iterators(items: Vec<HashMap<&[u8; 1], &[u8; 1]>>) -> Vec<MemtableIterator> {
         let mut res = vec![];
 
         for item in items {
-            let memtable = Memtable::new();
+            let memtable = Memtable::default();
 
             for (key, val) in item {
                 let _ = memtable.put(key, val);

@@ -11,16 +11,34 @@ use crate::{
 use anyhow::Result;
 use bytes::Bytes;
 
-mod common;
-mod iterators;
-mod memtable;
+pub mod common;
+pub mod iterators;
+pub mod memtable;
+
+#[derive(Debug)]
+pub struct Storage {
+    state: RwLock<StorageState>,
+    state_lock: Mutex<()>,
+    config: Config,
+}
+
+#[derive(Debug)]
+struct StorageState {
+    memtable: Arc<Memtable>,
+    frozen_memtables: Vec<Arc<Memtable>>,
+}
+
+#[derive(Debug)]
+pub struct Config {
+    pub sst_size: usize,
+}
 
 pub fn new(config: Config) -> Storage {
     Storage {
         config,
         state_lock: Mutex::new(()),
         state: RwLock::new(StorageState {
-            memtable: Arc::new(Memtable::new()),
+            memtable: Arc::new(Memtable::default()),
             frozen_memtables: Vec::new(),
         }),
     }
@@ -85,29 +103,10 @@ impl Storage {
         // check again, another thread might have frozen the memtable already.
         if memtable.get_size() >= self.config.sst_size {
             guard.frozen_memtables.insert(0, memtable);
-            guard.memtable = Arc::new(Memtable::new());
+            guard.memtable = Arc::new(Memtable::default());
         }
     }
 }
-
-#[derive(Debug)]
-pub struct Storage {
-    state: RwLock<StorageState>,
-    state_lock: Mutex<()>,
-    config: Config,
-}
-
-#[derive(Debug)]
-struct StorageState {
-    memtable: Arc<Memtable>,
-    frozen_memtables: Vec<Arc<Memtable>>,
-}
-
-#[derive(Debug)]
-pub struct Config {
-    pub sst_size: usize,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

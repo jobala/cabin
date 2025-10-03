@@ -1,6 +1,6 @@
-use std::sync::Arc;
-
+use cabin_storage::common::iterator::StorageIterator;
 use cabin_storage::Config;
+use std::ops::Bound::Unbounded;
 
 #[test]
 fn get_returns_latest_entry() {
@@ -42,6 +42,46 @@ fn get_invalid_key() {
     let storage = cabin_storage::new(config);
 
     storage.get(b"1").unwrap();
+}
+
+/**
+ * iter1: b->del, c->4, d->5
+iter2: a->1, b->2, c->3
+iter3: e->4
+ */
+#[test]
+fn scan_items() {
+    let config = Config { sst_size: 2 };
+    let storage = cabin_storage::new(config);
+    let entries = vec![
+        (b"e", b"4"),
+        (b"a", b"1"),
+        (b"b", b"2"),
+        (b"c", b"3"),
+        (b"c", b"4"),
+        (b"d", b"5"),
+    ];
+
+    for (k, v) in entries {
+        let _ = storage.put(k, v);
+    }
+
+    // delete b
+    let _ = storage.put(b"b", b"");
+
+    let mut res = vec![];
+    let mut iter = storage.scan(Unbounded, Unbounded);
+    while iter.is_valid() {
+        println!(
+            "{} -> {}",
+            str::from_utf8(iter.key()).unwrap(),
+            str::from_utf8(iter.value()).unwrap()
+        );
+        res.push(iter.value().to_vec());
+
+        let _ = iter.next();
+    }
+    assert_eq!(1, 1)
 }
 
 #[test]

@@ -2,8 +2,8 @@ use std::{ops::Bound, sync::Arc};
 
 use bytes::Bytes;
 use crossbeam_skiplist::{
-    SkipMap,
     map::{Entry, Range},
+    SkipMap,
 };
 use ouroboros::self_referencing;
 
