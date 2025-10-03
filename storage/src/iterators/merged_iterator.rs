@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use std::{cmp, collections::BinaryHeap, str::from_utf8};
+use std::{cmp, collections::BinaryHeap};
 
 use crate::common::iterator::StorageIterator;
 
@@ -100,8 +100,8 @@ impl<T: StorageIterator> PartialEq for HeapEntry<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::memtable::{memtable::Memtable, memtable_iterator::MemtableIterator};
-    use std::{collections::HashMap, ops::Bound::Unbounded, str::from_utf8};
+    use crate::memtable::{memtable_iterator::MemtableIterator, table::Memtable};
+    use std::{collections::HashMap, ops::Bound::Unbounded};
 
     use super::*;
 

@@ -6,7 +6,7 @@ use std::{
 use crate::{
     common::errors::KeyNotFound,
     iterators::{lsm_iterator::LsmIterator, merged_iterator::MergedIterator},
-    memtable::memtable::Memtable,
+    memtable::table::Memtable,
 };
 use anyhow::Result;
 use bytes::Bytes;
