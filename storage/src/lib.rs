@@ -4,4 +4,4 @@ pub mod lsm_storage;
 pub mod memtable;
 
 mod block;
-pub use lsm_storage::{new, Config, Storage};
+pub use lsm_storage::{Config, Storage, new};
