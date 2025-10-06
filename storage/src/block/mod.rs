@@ -1,5 +1,3 @@
-use std::u8;
-
 use bytes::{Buf, BufMut, Bytes};
 
 pub(crate) mod builder;
@@ -17,7 +15,7 @@ pub(crate) struct Block {
     pub(crate) offsets: Vec<u16>,
 }
 
-const SIZEOF_U16: usize = 2;
+pub const SIZEOF_U16: usize = 2;
 
 impl Block {
     fn encode(&self) -> Bytes {
