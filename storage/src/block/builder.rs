@@ -27,15 +27,14 @@ impl BlockBuilder {
         {
             return false;
         }
+
         if self.offsets.is_empty() {
             self.first_key.extend_from_slice(key);
         }
-
         self.offsets.push(self.data.len() as u16);
 
         self.data.put_u16(key.len() as u16);
         self.data.extend_from_slice(key);
-
         self.data.put_u16(value.len() as u16);
         self.data.extend_from_slice(value);
 
