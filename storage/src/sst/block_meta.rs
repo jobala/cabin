@@ -24,7 +24,7 @@ impl BlockMeta {
         let mut res = vec![];
 
         while buf.remaining() > 0 {
-            let block_offset = buf.get_u16();
+            let block_offset = buf.get_u32();
             let first_key_len = buf.get_u16();
             let first_key = buf.copy_to_bytes(first_key_len as usize).to_vec();
             let last_key_len = buf.get_u16();
