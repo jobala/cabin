@@ -1,5 +1,3 @@
-use std::io::Read;
-
 use bytes::{Buf, BufMut};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,5 +36,43 @@ impl BlockMeta {
         }
 
         res
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bytes::Bytes;
+
+    use super::*;
+
+    #[test]
+    fn test_encoding() {
+        let meta_blocks = vec![BlockMeta {
+            offset: 8,
+            first_key: vec![1],
+            last_key: vec![10],
+        }];
+
+        let mut encoded_meta_block = vec![];
+        BlockMeta::encode_block_meta(&meta_blocks, &mut encoded_meta_block);
+
+        let expected = [0, 0, 0, 8, 0, 1, 1, 0, 1, 10];
+        assert_eq!(encoded_meta_block, expected)
+    }
+
+    #[test]
+    fn test_decoding() {
+        let encoded_meta_block: Vec<u8> = vec![0, 0, 0, 8, 0, 1, 1, 0, 1, 10];
+        let buf = Bytes::copy_from_slice(&encoded_meta_block);
+        let block_meta = BlockMeta::decode_block_meta(buf);
+
+        assert_eq!(
+            block_meta,
+            vec![BlockMeta {
+                offset: 8,
+                first_key: vec![1],
+                last_key: vec![10],
+            }]
+        )
     }
 }
