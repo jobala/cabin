@@ -6,7 +6,7 @@ pub struct BlockBuilder {
     data: Vec<u8>,
     offsets: Vec<u16>,
     block_size: usize,
-    first_key: Vec<u8>,
+    pub(crate) first_key: Vec<u8>,
 }
 
 impl BlockBuilder {
