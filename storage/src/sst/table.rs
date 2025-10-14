@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 
 use crate::{
-    block::Block,
+    block::{Block, SIZEOF_U16},
     sst::{block_meta::BlockMeta, file::FileObject},
 };
 
@@ -20,28 +20,56 @@ pub struct SSTable {
 
 impl SSTable {
     pub fn open(id: usize, file: FileObject) -> Result<Self> {
-        unimplemented!()
-    }
+        let last_key_size_offset = file.size() - SIZEOF_U16 as u64;
+        let last_key_size = file.read(last_key_size_offset, 2).unwrap();
+        let last_key_size = (&last_key_size[..]).get_u16() as u64;
+        let last_key = file.read(file.size() - 2 - last_key_size, last_key_size)?;
 
-    pub fn create_meta_only(
-        id: usize,
-        file_size: u64,
-        first_key: Vec<u8>,
-        last_key: Vec<u8>,
-    ) -> Self {
-        Self {
-            file: FileObject(None, file_size),
-            block_meta: vec![],
-            block_meta_offset: 0,
+        let first_key_size_offset =
+            file.size() - last_key_size_offset - last_key_size - SIZEOF_U16 as u64;
+        let first_key_size = file.read(first_key_size_offset, 2)?;
+        let first_key_size = (&first_key_size[..]).get_u16() as u64;
+        let first_key = file.read(
+            file.size() - (4 + last_key_size + first_key_size),
+            first_key_size,
+        )?;
+
+        let block_meta_offset = file.read(
+            file.size() - (first_key_size_offset - first_key_size - 4),
+            4,
+        )?;
+        let block_meta_offset = (&block_meta_offset[..]).get_u32() as usize;
+
+        let block_meta_len =
+            file.size() - (4 + last_key_size + first_key_size - 4) - block_meta_offset as u64;
+        let block_meta = file.read(block_meta_offset as u64, block_meta_len)?;
+
+        Ok(SSTable {
             id,
+            file,
+            block_meta: BlockMeta::decode_block_meta(Bytes::copy_from_slice(&block_meta)),
+            block_meta_offset,
             first_key,
             last_key,
             max_ts: 0,
-        }
+        })
     }
 
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        unimplemented!()
+        let this_block_offset = self.block_meta[block_idx].offset;
+        let next_block_offset = self
+            .block_meta
+            .get(block_idx + 1)
+            .map_or(self.block_meta_offset, |meta| meta.offset);
+        let block_size = (next_block_offset - this_block_offset) as u64;
+
+        let block_data = self
+            .file
+            .read(this_block_offset as u64, block_size)
+            .unwrap();
+        let block = Block::decode(&block_data);
+
+        Ok(Arc::new(block))
     }
 
     pub fn read_block_cached(&self, block_idx: usize) -> Result<Arc<Block>> {
@@ -49,7 +77,21 @@ impl SSTable {
     }
 
     pub fn find_block_idx(&self, key: &[u8]) -> usize {
-        unimplemented!()
+        let mut l = 0usize;
+        let mut r = self.block_meta.len() - 1;
+
+        while l < r {
+            let mid = (l + r) / 2;
+            let mid_block = &self.block_meta[mid];
+
+            if *key <= *mid_block.first_key {
+                r = mid;
+            } else {
+                l = mid + 1;
+            }
+        }
+
+        l
     }
 
     pub fn num_of_blocks(&self) -> usize {

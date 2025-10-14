@@ -66,7 +66,11 @@ impl SSTableBuilder {
         let meta_offset = self.data.len();
         let mut buf = self.data;
         BlockMeta::encode_block_meta(&self.meta, &mut buf);
-        buf.put_u16(meta_offset as u16);
+        buf.put_u32(meta_offset as u32);
+        buf.extend(&self.first_key);
+        buf.put_u16(self.first_key.len() as u16);
+        buf.extend(&self.last_key);
+        buf.put_u16(self.last_key.len() as u16);
         let file = FileObject::create(path.as_ref(), buf)?;
 
         Ok(SSTable {
