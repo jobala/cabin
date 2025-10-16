@@ -8,6 +8,7 @@ use crate::{
     sst::{block_meta::BlockMeta, file::FileObject},
 };
 
+#[derive(Debug)]
 pub struct SSTable {
     pub(crate) file: FileObject,
     pub(crate) block_meta: Vec<BlockMeta>,
@@ -23,10 +24,9 @@ impl SSTable {
         let last_key_size_offset = file.size() - SIZEOF_U16 as u64;
         let last_key_size = file.read(last_key_size_offset, 2).unwrap();
         let last_key_size = (&last_key_size[..]).get_u16() as u64;
-        let last_key = file.read(file.size() - 2 - last_key_size, last_key_size)?;
+        let last_key = file.read(last_key_size_offset - last_key_size, last_key_size)?;
 
-        let first_key_size_offset =
-            file.size() - last_key_size_offset - last_key_size - SIZEOF_U16 as u64;
+        let first_key_size_offset = last_key_size_offset - last_key_size - SIZEOF_U16 as u64;
         let first_key_size = file.read(first_key_size_offset, 2)?;
         let first_key_size = (&first_key_size[..]).get_u16() as u64;
         let first_key = file.read(
@@ -34,14 +34,11 @@ impl SSTable {
             first_key_size,
         )?;
 
-        let block_meta_offset = file.read(
-            file.size() - (first_key_size_offset - first_key_size - 4),
-            4,
-        )?;
+        // block_meta_offset is 4 bytes wide
+        let block_meta_offset = file.read(first_key_size_offset - first_key_size - 4, 4)?;
         let block_meta_offset = (&block_meta_offset[..]).get_u32() as usize;
-
         let block_meta_len =
-            file.size() - (4 + last_key_size + first_key_size - 4) - block_meta_offset as u64;
+            (first_key_size_offset - first_key_size - 4) - block_meta_offset as u64;
         let block_meta = file.read(block_meta_offset as u64, block_meta_len)?;
 
         Ok(SSTable {

@@ -66,8 +66,6 @@ impl SSTableBuilder {
     pub fn build(&mut self, id: usize, path: impl AsRef<Path>) -> Result<SSTable> {
         self.finalize_block();
 
-        println!("{:?}", self.meta);
-
         let meta_offset = self.data.len();
         let mut buf = self.data.clone();
         BlockMeta::encode_block_meta(&self.meta, &mut buf);

@@ -10,7 +10,7 @@ pub(crate) mod iterator;
 /// | Entry #1 | Entry #2 | ... | Entry #N | Offset #1 | Offset #2 | ... | Offset #N | num_of_elements |
 ///----------------------------------------------------------------------------------------------------
 #[derive(Debug)]
-pub(crate) struct Block {
+pub struct Block {
     pub(crate) data: Vec<u8>,
     pub(crate) offsets: Vec<u16>,
 }

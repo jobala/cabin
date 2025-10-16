@@ -2,6 +2,7 @@ use std::{fs::File, path::Path};
 
 use anyhow::Result;
 
+#[derive(Debug)]
 pub struct FileObject(pub(crate) Option<File>, pub(crate) u64);
 
 impl FileObject {
