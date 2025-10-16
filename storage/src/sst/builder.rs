@@ -9,6 +9,7 @@ use crate::sst::block_meta::BlockMeta;
 use crate::sst::file::FileObject;
 use crate::sst::table::SSTable;
 
+#[derive(Debug)]
 pub struct SSTableBuilder {
     builder: BlockBuilder,
     first_key: Vec<u8>,
@@ -62,9 +63,13 @@ impl SSTableBuilder {
         self.data.len()
     }
 
-    pub fn build(mut self, id: usize, path: impl AsRef<Path>) -> Result<SSTable> {
+    pub fn build(&mut self, id: usize, path: impl AsRef<Path>) -> Result<SSTable> {
+        self.finalize_block();
+
+        println!("{:?}", self.meta);
+
         let meta_offset = self.data.len();
-        let mut buf = self.data;
+        let mut buf = self.data.clone();
         BlockMeta::encode_block_meta(&self.meta, &mut buf);
         buf.put_u32(meta_offset as u32);
         buf.extend(&self.first_key);
@@ -78,7 +83,7 @@ impl SSTableBuilder {
             file,
             first_key: self.first_key.to_vec(),
             last_key: self.last_key.to_vec(),
-            block_meta: self.meta,
+            block_meta: self.meta.clone(),
             block_meta_offset: meta_offset,
             max_ts: 0,
         })

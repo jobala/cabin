@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use anyhow::Result;
 use bytes::{Buf, Bytes};
@@ -84,10 +84,9 @@ impl SSTable {
             let mid = (l + r) / 2;
             let mid_block = &self.block_meta[mid];
 
-            if *key <= *mid_block.first_key {
-                r = mid;
-            } else {
-                l = mid + 1;
+            match key.cmp(&mid_block.last_key) {
+                Ordering::Less | Ordering::Equal => r = mid,
+                _ => l = mid + 1,
             }
         }
 

@@ -2,8 +2,9 @@ use bytes::BufMut;
 
 use crate::block::{Block, SIZEOF_U16};
 
+#[derive(Debug)]
 pub struct BlockBuilder {
-    data: Vec<u8>,
+    pub(crate) data: Vec<u8>,
     offsets: Vec<u16>,
     block_size: usize,
     pub(crate) first_key: Vec<u8>,
