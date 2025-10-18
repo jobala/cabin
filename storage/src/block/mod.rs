@@ -10,7 +10,7 @@ pub(crate) mod iterator;
 /// | Entry #1 | Entry #2 | ... | Entry #N | Offset #1 | Offset #2 | ... | Offset #N | num_of_elements |
 ///----------------------------------------------------------------------------------------------------
 #[derive(Debug)]
-pub(crate) struct Block {
+pub struct Block {
     pub(crate) data: Vec<u8>,
     pub(crate) offsets: Vec<u16>,
 }
@@ -18,7 +18,7 @@ pub(crate) struct Block {
 pub const SIZEOF_U16: usize = 2;
 
 impl Block {
-    fn encode(&self) -> Bytes {
+    pub(crate) fn encode(&self) -> Bytes {
         let mut buf = self.data.clone();
 
         for offset in self.offsets.clone() {
@@ -29,7 +29,7 @@ impl Block {
         buf.into()
     }
 
-    fn decode(data: &[u8]) -> Self {
+    pub(crate) fn decode(data: &[u8]) -> Self {
         let extra_start = data.len() - SIZEOF_U16;
         let num_of_entries = (&data[extra_start..]).get_u16() as usize;
         let offset_start = extra_start - (SIZEOF_U16 * num_of_entries);

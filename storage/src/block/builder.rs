@@ -2,11 +2,12 @@ use bytes::BufMut;
 
 use crate::block::{Block, SIZEOF_U16};
 
+#[derive(Debug)]
 pub struct BlockBuilder {
-    data: Vec<u8>,
+    pub(crate) data: Vec<u8>,
     offsets: Vec<u16>,
     block_size: usize,
-    first_key: Vec<u8>,
+    pub(crate) first_key: Vec<u8>,
 }
 
 impl BlockBuilder {
@@ -27,14 +28,15 @@ impl BlockBuilder {
         {
             return false;
         }
-
         if self.offsets.is_empty() {
             self.first_key.extend_from_slice(key);
         }
+
         self.offsets.push(self.data.len() as u16);
 
         self.data.put_u16(key.len() as u16);
         self.data.extend_from_slice(key);
+
         self.data.put_u16(value.len() as u16);
         self.data.extend_from_slice(value);
 

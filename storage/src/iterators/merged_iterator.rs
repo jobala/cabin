@@ -58,6 +58,7 @@ impl<T: StorageIterator> StorageIterator for MergedIterator<T> {
                 self.heap.push(entry);
             }
         }
+
         Ok(())
     }
 }
