@@ -2,11 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Ok, Result};
 
-use crate::{
-    SSTable,
-    block::iterator::{self, BlockIterator},
-    common::iterator::StorageIterator,
-};
+use crate::{SSTable, block::iterator::BlockIterator, common::iterator::StorageIterator};
 
 pub struct SSTableIterator {
     table: Arc<SSTable>,

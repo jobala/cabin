@@ -1,4 +1,4 @@
-use std::{str::from_utf8, sync::Arc};
+use std::sync::Arc;
 
 use cabin_storage::{
     FileObject, SSTable, SSTableBuilder, SSTableIterator, common::iterator::StorageIterator,
