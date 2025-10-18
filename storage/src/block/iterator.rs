@@ -39,12 +39,12 @@ impl BlockIterator {
         block_iter
     }
 
-    pub fn key(&self) -> Bytes {
-        Bytes::copy_from_slice(&self.key[..])
+    pub fn key(&self) -> &[u8] {
+        &self.key
     }
 
-    pub fn value(&self) -> Bytes {
-        Bytes::copy_from_slice(&self.value[..])
+    pub fn value(&self) -> &[u8] {
+        &self.value
     }
 
     pub fn is_valid(&self) -> bool {
