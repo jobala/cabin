@@ -11,8 +11,8 @@ use crate::{
 #[derive(Debug)]
 pub struct SSTable {
     pub(crate) file: FileObject,
-    pub(crate) block_meta: Vec<BlockMeta>,
-    pub(crate) block_meta_offset: usize,
+    pub(crate) block_index: Vec<BlockMeta>,
+    pub(crate) block_index_offset: usize,
     pub(crate) id: usize,
     pub(crate) first_key: Vec<u8>,
     pub(crate) last_key: Vec<u8>,
@@ -35,17 +35,17 @@ impl SSTable {
         )?;
 
         // block_meta_offset is 4 bytes wide
-        let block_meta_offset = file.read(first_key_size_offset - first_key_size - 4, 4)?;
-        let block_meta_offset = (&block_meta_offset[..]).get_u32() as usize;
-        let block_meta_len =
-            (first_key_size_offset - first_key_size - 4) - block_meta_offset as u64;
-        let block_meta = file.read(block_meta_offset as u64, block_meta_len)?;
+        let block_index_offset = file.read(first_key_size_offset - first_key_size - 4, 4)?;
+        let block_index_offset = (&block_index_offset[..]).get_u32() as usize;
+        let block_index_len =
+            (first_key_size_offset - first_key_size - 4) - block_index_offset as u64;
+        let block_meta = file.read(block_index_offset as u64, block_index_len)?;
 
         Ok(SSTable {
             id,
             file,
-            block_meta: BlockMeta::decode_block_meta(Bytes::copy_from_slice(&block_meta)),
-            block_meta_offset,
+            block_index: BlockMeta::decode_block_meta(Bytes::copy_from_slice(&block_meta)),
+            block_index_offset,
             first_key,
             last_key,
             max_ts: 0,
@@ -53,11 +53,11 @@ impl SSTable {
     }
 
     pub fn read_block(&self, block_idx: usize) -> Result<Arc<Block>> {
-        let this_block_offset = self.block_meta[block_idx].offset;
+        let this_block_offset = self.block_index[block_idx].offset;
         let next_block_offset = self
-            .block_meta
+            .block_index
             .get(block_idx + 1)
-            .map_or(self.block_meta_offset, |meta| meta.offset);
+            .map_or(self.block_index_offset, |meta| meta.offset);
         let block_size = (next_block_offset - this_block_offset) as u64;
 
         let block_data = self
@@ -75,11 +75,11 @@ impl SSTable {
 
     pub fn find_block_idx(&self, key: &[u8]) -> usize {
         let mut l = 0usize;
-        let mut r = self.block_meta.len() - 1;
+        let mut r = self.block_index.len() - 1;
 
         while l < r {
             let mid = (l + r) / 2;
-            let mid_block = &self.block_meta[mid];
+            let mid_block = &self.block_index[mid];
 
             match key.cmp(&mid_block.last_key) {
                 Ordering::Less | Ordering::Equal => r = mid,
@@ -91,7 +91,7 @@ impl SSTable {
     }
 
     pub fn num_of_blocks(&self) -> usize {
-        self.block_meta.len()
+        self.block_index.len()
     }
 
     pub fn first_key(&self) -> Bytes {

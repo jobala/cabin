@@ -81,8 +81,8 @@ impl SSTableBuilder {
             file,
             first_key: self.first_key.to_vec(),
             last_key: self.last_key.to_vec(),
-            block_meta: self.meta.clone(),
-            block_meta_offset: meta_offset,
+            block_index: self.meta.clone(),
+            block_index_offset: meta_offset,
             max_ts: 0,
         })
     }
