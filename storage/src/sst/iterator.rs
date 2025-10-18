@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use anyhow::{Ok, Result};
 
-use crate::{SSTable, block::iterator::BlockIterator, common::iterator::StorageIterator};
+use crate::{
+    SSTable,
+    block::iterator::{self, BlockIterator},
+    common::iterator::StorageIterator,
+};
 
 pub struct SSTableIterator {
     table: Arc<SSTable>,
@@ -38,7 +42,12 @@ impl SSTableIterator {
     }
 
     pub fn seek_to_key(&mut self, key: &[u8]) -> Result<()> {
-        self.block_iter.seek_to_key(key);
+        let block_idx = self.table.find_block_idx(key);
+        let block = self.table.read_block(block_idx)?;
+        let block_iter = BlockIterator::create_and_seek_to_key(block, key);
+
+        self.block_iter = block_iter;
+        self.block_idx = block_idx;
         Ok(())
     }
 }

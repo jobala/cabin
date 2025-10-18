@@ -87,6 +87,27 @@ fn test_sst_iterator() {
 }
 
 #[test]
+fn test_seek_to_key() {
+    let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
+
+    for (key, value) in get_sst_entries() {
+        sst_builder.add(key, value);
+    }
+
+    let tmp_file = NamedTempFile::new().unwrap();
+    let _sst = sst_builder.build(1, tmp_file.path()).unwrap();
+
+    let file_obj = FileObject::open(tmp_file.path()).unwrap();
+    let restored_sst = Arc::new(SSTable::open(1, file_obj).unwrap());
+
+    let mut sst_iter = SSTableIterator::create_and_seek_to_first(restored_sst).unwrap();
+    sst_iter.seek_to_key(b"i").unwrap();
+
+    assert_eq!(sst_iter.key(), b"i");
+    assert_eq!(sst_iter.value(), b"9")
+}
+
+#[test]
 fn test_seek_to_invalid_key() {
     let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
 
