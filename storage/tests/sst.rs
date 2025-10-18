@@ -3,7 +3,7 @@ use tempfile::NamedTempFile;
 
 #[test]
 fn test_block_search_in_sst() {
-    let mut sst_builder = SSTableBuilder::new(32); // block size of 4 bytes
+    let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
 
     for (key, value) in get_sst_entries() {
         sst_builder.add(key, value);
@@ -28,7 +28,7 @@ fn test_block_search_in_sst() {
 
 #[test]
 fn test_reading_sst_from_file() {
-    let mut sst_builder = SSTableBuilder::new(32); // block size of 4 bytes
+    let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
 
     for (key, value) in get_sst_entries() {
         sst_builder.add(key, value);
