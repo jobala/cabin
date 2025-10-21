@@ -23,7 +23,7 @@ impl SSTableIterator {
 
     pub fn create_and_seek_to_key(table: Arc<SSTable>, key: &[u8]) -> Result<Self> {
         let block_idx = table.find_block_idx(key);
-        let block = table.read_block(block_idx)?;
+        let block = table.read_block_cached(block_idx)?;
 
         Ok(SSTableIterator {
             table: table.clone(),
@@ -39,7 +39,7 @@ impl SSTableIterator {
 
     pub fn seek_to_key(&mut self, key: &[u8]) -> Result<()> {
         let block_idx = self.table.find_block_idx(key);
-        let block = self.table.read_block(block_idx)?;
+        let block = self.table.read_block_cached(block_idx)?;
         let block_iter = BlockIterator::create_and_seek_to_key(block, key);
 
         self.block_iter = block_iter;

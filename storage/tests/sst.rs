@@ -1,8 +1,9 @@
-use std::sync::Arc;
-
 use cabin_storage::{
     FileObject, SSTable, SSTableBuilder, SSTableIterator, common::iterator::StorageIterator,
 };
+use moka::sync::Cache;
+
+use std::sync::Arc;
 use tempfile::NamedTempFile;
 
 #[test]
@@ -13,8 +14,9 @@ fn test_block_search_in_sst() {
         sst_builder.add(key, value);
     }
 
+    let block_cache = Arc::new(Cache::new(1));
     let tmp_file = NamedTempFile::new().unwrap();
-    let sst = sst_builder.build(1, tmp_file).unwrap();
+    let sst = sst_builder.build(1, block_cache, tmp_file).unwrap();
 
     assert_eq!(sst.find_block_idx(b"a"), 0);
     assert_eq!(sst.find_block_idx(b"b"), 0);
@@ -32,16 +34,19 @@ fn test_block_search_in_sst() {
 #[test]
 fn test_reading_sst_from_file() {
     let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
+    let block_cache = Arc::new(Cache::new(1));
 
     for (key, value) in get_sst_entries() {
         sst_builder.add(key, value);
     }
 
     let tmp_file = NamedTempFile::new().unwrap();
-    let _sst = sst_builder.build(1, tmp_file.path()).unwrap();
+    let _sst = sst_builder
+        .build(1, block_cache.clone(), tmp_file.path())
+        .unwrap();
 
     let file_obj = FileObject::open(tmp_file.path()).unwrap();
-    let restored_sst = SSTable::open(1, file_obj).unwrap();
+    let restored_sst = SSTable::open(1, block_cache.clone(), file_obj).unwrap();
 
     assert_eq!(restored_sst.find_block_idx(b"a"), 0);
     assert_eq!(restored_sst.find_block_idx(b"b"), 0);
@@ -59,16 +64,19 @@ fn test_reading_sst_from_file() {
 #[test]
 fn test_sst_iterator() {
     let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
+    let block_cache = Arc::new(Cache::new(1));
 
     for (key, value) in get_sst_entries() {
         sst_builder.add(key, value);
     }
 
     let tmp_file = NamedTempFile::new().unwrap();
-    let _sst = sst_builder.build(1, tmp_file.path()).unwrap();
+    let _sst = sst_builder
+        .build(1, block_cache.clone(), tmp_file.path())
+        .unwrap();
 
     let file_obj = FileObject::open(tmp_file.path()).unwrap();
-    let restored_sst = Arc::new(SSTable::open(1, file_obj).unwrap());
+    let restored_sst = Arc::new(SSTable::open(1, block_cache.clone(), file_obj).unwrap());
 
     let mut sst_iter = SSTableIterator::create_and_seek_to_first(restored_sst).unwrap();
     let mut res = vec![];
@@ -89,16 +97,19 @@ fn test_sst_iterator() {
 #[test]
 fn test_seek_to_key() {
     let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
+    let block_cache = Arc::new(Cache::new(1));
 
     for (key, value) in get_sst_entries() {
         sst_builder.add(key, value);
     }
 
     let tmp_file = NamedTempFile::new().unwrap();
-    let _sst = sst_builder.build(1, tmp_file.path()).unwrap();
+    let _sst = sst_builder
+        .build(1, block_cache.clone(), tmp_file.path())
+        .unwrap();
 
     let file_obj = FileObject::open(tmp_file.path()).unwrap();
-    let restored_sst = Arc::new(SSTable::open(1, file_obj).unwrap());
+    let restored_sst = Arc::new(SSTable::open(1, block_cache.clone(), file_obj).unwrap());
 
     let mut sst_iter = SSTableIterator::create_and_seek_to_first(restored_sst).unwrap();
     sst_iter.seek_to_key(b"i").unwrap();
@@ -110,16 +121,19 @@ fn test_seek_to_key() {
 #[test]
 fn test_seek_to_invalid_key() {
     let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
+    let block_cache = Arc::new(Cache::new(1));
 
     for (key, value) in get_sst_entries() {
         sst_builder.add(key, value);
     }
 
     let tmp_file = NamedTempFile::new().unwrap();
-    let _sst = sst_builder.build(1, tmp_file.path()).unwrap();
+    let _sst = sst_builder
+        .build(1, block_cache.clone(), tmp_file.path())
+        .unwrap();
 
     let file_obj = FileObject::open(tmp_file.path()).unwrap();
-    let restored_sst = Arc::new(SSTable::open(1, file_obj).unwrap());
+    let restored_sst = Arc::new(SSTable::open(1, block_cache.clone(), file_obj).unwrap());
 
     let mut sst_iter = SSTableIterator::create_and_seek_to_key(restored_sst, b"g").unwrap();
     let mut res = vec![];

@@ -1,12 +1,15 @@
 use std::{cmp::Ordering, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{Ok, Result, anyhow};
 use bytes::{Buf, Bytes};
+use moka::sync::Cache;
 
 use crate::{
     block::{Block, SIZEOF_U16},
     sst::{block_meta::BlockMeta, file::FileObject},
 };
+
+pub type BlockCache = Cache<(usize, usize), Arc<Block>>;
 
 #[derive(Debug)]
 pub struct SSTable {
@@ -17,10 +20,11 @@ pub struct SSTable {
     pub(crate) first_key: Vec<u8>,
     pub(crate) last_key: Vec<u8>,
     pub(crate) max_ts: u64,
+    pub(crate) block_cache: Arc<BlockCache>,
 }
 
 impl SSTable {
-    pub fn open(id: usize, file: FileObject) -> Result<Self> {
+    pub fn open(id: usize, block_cache: Arc<BlockCache>, file: FileObject) -> Result<Self> {
         let last_key_size_offset = file.size() - SIZEOF_U16 as u64;
         let last_key_size = file.read(last_key_size_offset, 2).unwrap();
         let last_key_size = (&last_key_size[..]).get_u16() as u64;
@@ -49,6 +53,7 @@ impl SSTable {
             first_key,
             last_key,
             max_ts: 0,
+            block_cache,
         })
     }
 
@@ -70,7 +75,9 @@ impl SSTable {
     }
 
     pub fn read_block_cached(&self, block_idx: usize) -> Result<Arc<Block>> {
-        todo!()
+        self.block_cache
+            .try_get_with((self.id, block_idx), || self.read_block(block_idx))
+            .map_err(|e| anyhow!("{}", e))
     }
 
     pub fn find_block_idx(&self, key: &[u8]) -> usize {
