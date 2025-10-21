@@ -1,5 +1,6 @@
 use std::mem;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Ok, Result};
 use bytes::BufMut;
@@ -7,7 +8,7 @@ use bytes::BufMut;
 use crate::block::builder::BlockBuilder;
 use crate::sst::block_meta::BlockMeta;
 use crate::sst::file::FileObject;
-use crate::sst::table::SSTable;
+use crate::sst::table::{BlockCache, SSTable};
 
 #[derive(Debug)]
 pub struct SSTableBuilder {
@@ -63,7 +64,12 @@ impl SSTableBuilder {
         self.data.len()
     }
 
-    pub fn build(&mut self, id: usize, path: impl AsRef<Path>) -> Result<SSTable> {
+    pub fn build(
+        &mut self,
+        id: usize,
+        block_cache: Arc<BlockCache>,
+        path: impl AsRef<Path>,
+    ) -> Result<SSTable> {
         self.finalize_block();
 
         let meta_offset = self.data.len();
@@ -84,6 +90,7 @@ impl SSTableBuilder {
             block_index: self.meta.clone(),
             block_index_offset: meta_offset,
             max_ts: 0,
+            block_cache,
         })
     }
 }
