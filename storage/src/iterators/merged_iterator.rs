@@ -21,11 +21,19 @@ impl<T: StorageIterator> MergedIterator<T> {
 
 impl<T: StorageIterator> StorageIterator for MergedIterator<T> {
     fn value(&self) -> &[u8] {
-        self.heap.peek().unwrap().iter.value()
+        let Some(heap_entry) = self.heap.peek() else {
+            return &[];
+        };
+
+        heap_entry.iter.value()
     }
 
     fn key(&self) -> &[u8] {
-        self.heap.peek().unwrap().iter.key()
+        let Some(heap_entry) = self.heap.peek() else {
+            return &[];
+        };
+
+        heap_entry.iter.key()
     }
 
     fn is_valid(&self) -> bool {
