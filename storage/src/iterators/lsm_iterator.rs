@@ -1,18 +1,23 @@
+use std::ops::Bound;
+
 use anyhow::Ok;
 
 use crate::{
-    common::iterator::StorageIterator, iterators::merged_iterator::MergedIterator,
+    SSTableIterator,
+    common::iterator::StorageIterator,
+    iterators::{merged_iterator::MergedIterator, two_merge_iterator::TwoMergeIterator},
     memtable::memtable_iterator::MemtableIterator,
 };
 
-type LsmIteratorInner = MergedIterator<MemtableIterator>;
+type LsmIteratorInner =
+    TwoMergeIterator<MergedIterator<MemtableIterator>, MergedIterator<SSTableIterator>>;
 
 pub struct LsmIterator {
     inner: LsmIteratorInner,
 }
 
 impl LsmIterator {
-    pub fn new(iter: LsmIteratorInner) -> Self {
+    pub fn new(iter: LsmIteratorInner, upper: Bound<&[u8]>) -> Self {
         let mut lsm_iterator = Self { inner: iter };
         lsm_iterator.skip_deleted();
 
