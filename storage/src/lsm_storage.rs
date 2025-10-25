@@ -1,19 +1,26 @@
 use std::{
+    collections::HashMap,
     ops::Bound,
     sync::{Arc, Mutex, MutexGuard, RwLock},
 };
 
 use crate::{
-    common::errors::KeyNotFound,
-    iterators::{lsm_iterator::LsmIterator, merged_iterator::MergedIterator},
-    memtable::table::Memtable,
+    SSTable, SSTableIterator,
+    common::{errors::KeyNotFound, iterator::StorageIterator},
+    iterators::{
+        lsm_iterator::LsmIterator, merged_iterator::MergedIterator,
+        two_merge_iterator::TwoMergeIterator,
+    },
+    memtable::{memtable_iterator::map_bound, table::Memtable},
+    sst::BlockCache,
 };
 use anyhow::Result;
 use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct Storage {
-    state: RwLock<StorageState>,
+    state: RwLock<Arc<StorageState>>,
+    block_cache: Arc<BlockCache>,
     state_lock: Mutex<()>,
     config: Config,
 }
@@ -22,6 +29,8 @@ pub struct Storage {
 struct StorageState {
     memtable: Arc<Memtable>,
     frozen_memtables: Vec<Arc<Memtable>>,
+    l0_sstables: Vec<usize>,
+    sstables: HashMap<usize, Arc<SSTable>>,
 }
 
 #[derive(Debug)]
@@ -33,10 +42,13 @@ pub fn new(config: Config) -> Storage {
     Storage {
         config,
         state_lock: Mutex::new(()),
-        state: RwLock::new(StorageState {
+        block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
+        state: RwLock::new(Arc::new(StorageState {
             memtable: Arc::new(Memtable::default()),
             frozen_memtables: Vec::new(),
-        }),
+            l0_sstables: vec![],
+            sstables: HashMap::new(),
+        })),
     }
 }
 
@@ -70,19 +82,46 @@ impl Storage {
         Ok(value)
     }
 
-    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> LsmIterator {
-        let guard = self.state.read().unwrap();
+    pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<LsmIterator> {
+        let state = {
+            let guard = self.state.read().unwrap();
+            guard.clone()
+        };
+
         let mut iters = vec![];
 
         // insert memtables from newest to oldest
-        iters.push(guard.memtable.scan(lower, upper));
+        iters.push(state.memtable.scan(lower, upper));
 
-        let frozen_tables = &guard.frozen_memtables;
+        let frozen_tables = &state.frozen_memtables;
         for frozen_table in frozen_tables {
             iters.push(frozen_table.scan(lower, upper));
         }
+        let mem_iters = MergedIterator::new(iters);
 
-        LsmIterator::new(MergedIterator::new(iters))
+        let mut table_iters = Vec::with_capacity(state.l0_sstables.len());
+        // TODO: only consider sstables that might contain the key
+        for table_id in state.l0_sstables.iter() {
+            let table = state.sstables[table_id].clone();
+            let iter = match lower {
+                Bound::Included(key) => SSTableIterator::create_and_seek_to_key(table, key)?,
+                Bound::Unbounded => SSTableIterator::create_and_seek_to_first(table)?,
+                Bound::Excluded(key) => {
+                    let mut iter = SSTableIterator::create_and_seek_to_key(table, key)?;
+
+                    if iter.is_valid() && iter.key() == key {
+                        iter.next()?;
+                    }
+                    iter
+                }
+            };
+
+            table_iters.push(iter);
+        }
+
+        let sst_iters = MergedIterator::new(table_iters);
+        let inner = TwoMergeIterator::create(mem_iters, sst_iters).unwrap();
+        Ok(LsmIterator::new(inner, map_bound(upper)))
     }
 
     fn try_freeze(&self, size: usize) {
@@ -98,8 +137,17 @@ impl Storage {
 
         // check again, another thread might have frozen the memtable already.
         if memtable.get_size() >= self.config.sst_size {
-            guard.frozen_memtables.insert(0, memtable);
-            guard.memtable = Arc::new(Memtable::default());
+            let mut frozen_memtables = guard.frozen_memtables.clone();
+            frozen_memtables.insert(0, memtable);
+
+            *guard = Arc::new(StorageState {
+                memtable: Arc::new(Memtable::default()),
+                frozen_memtables,
+                l0_sstables: guard.l0_sstables.clone(),
+                sstables: guard.sstables.clone(),
+            });
+
+            drop(guard);
         }
     }
 }

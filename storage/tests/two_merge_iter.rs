@@ -117,17 +117,6 @@ fn create_empty_merged_iter() -> MergedIterator<MemtableIterator> {
     MergedIterator::new(iterators)
 }
 
-fn create_empty_sst_iter() -> SSTableIterator {
-    let mut sst_builder = SSTableBuilder::new(32); // block size of 32 bytes
-    let block_cache = Arc::new(Cache::new(1));
-    let tmp_file = NamedTempFile::new().unwrap();
-    let sst = sst_builder
-        .build(1, block_cache.clone(), tmp_file.path())
-        .unwrap();
-
-    SSTableIterator::create_and_seek_to_first(Arc::new(sst)).unwrap()
-}
-
 fn get_sst_entries() -> Vec<(&'static [u8], &'static [u8])> {
     vec![
         (b"b", b"-2"),

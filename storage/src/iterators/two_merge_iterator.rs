@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, str::from_utf8};
+use std::cmp::Ordering;
 
 use anyhow::{Ok, Result};
 
@@ -18,7 +18,7 @@ impl<T: 'static + StorageIterator, W: 'static + StorageIterator> TwoMergeIterato
             match mem_iter.key().cmp(sst_iter.key()) {
                 Ordering::Equal => mem_iter.is_valid(),
                 Ordering::Less => mem_iter.is_valid(),
-                Ordering::Greater => false,
+                Ordering::Greater => !sst_iter.is_valid(), // use mem_iter if sst_iter is invalid
             }
         };
 
@@ -48,7 +48,10 @@ impl<T: 'static + StorageIterator, W: 'static + StorageIterator> StorageIterator
     }
 
     fn is_valid(&self) -> bool {
-        self.mem_iter.is_valid() || self.sst_iter.is_valid()
+        match self.is_mem {
+            true => self.mem_iter.is_valid(),
+            _ => self.sst_iter.is_valid(),
+        }
     }
 
     fn next(&mut self) -> Result<()> {
@@ -67,7 +70,7 @@ impl<T: 'static + StorageIterator, W: 'static + StorageIterator> StorageIterator
             match self.mem_iter.key().cmp(self.sst_iter.key()) {
                 Ordering::Equal => self.mem_iter.is_valid(),
                 Ordering::Less => self.mem_iter.is_valid(),
-                Ordering::Greater => false,
+                Ordering::Greater => !self.sst_iter.is_valid(),
             }
         };
 
