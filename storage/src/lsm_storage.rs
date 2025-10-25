@@ -67,19 +67,44 @@ impl Storage {
     }
 
     pub fn get(&self, key: &[u8]) -> Result<Bytes, KeyNotFound> {
-        let guard = self.state.read().unwrap();
-
-        let Some(value) = guard.memtable.get(key) else {
-            for frozen_table in guard.frozen_memtables.clone() {
-                if let Some(value) = frozen_table.get(key) {
-                    return Ok(value);
-                }
-            }
-
-            return Err(KeyNotFound);
+        let state = {
+            let guard = self.state.read().unwrap();
+            guard.clone()
         };
 
-        Ok(value)
+        let mut res = state.memtable.get(key);
+
+        // search through frozen memtables
+        if res.is_none() {
+            for frozen_table in state.frozen_memtables.clone() {
+                if frozen_table.get(key).is_some() {
+                    res = frozen_table.get(key);
+                    break;
+                }
+            }
+        }
+
+        // search through ssts
+        if res.is_none() {
+            let mut table_iters = Vec::with_capacity(state.l0_sstables.len());
+            for table_id in state.l0_sstables.iter() {
+                let table = state.sstables[table_id].clone();
+                let iter = SSTableIterator::create_and_seek_to_key(table, key).unwrap();
+                table_iters.push(iter);
+            }
+
+            let merged_iter = MergedIterator::new(table_iters);
+            if !merged_iter.key().is_empty() && merged_iter.key() == key {
+                res = Some(Bytes::copy_from_slice(merged_iter.value()))
+            } else {
+                res = None;
+            }
+        }
+
+        match res {
+            Some(value) => Ok(value),
+            None => Err(KeyNotFound),
+        }
     }
 
     pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> Result<LsmIterator> {
