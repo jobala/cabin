@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 
 use crate::block::Block;
 
@@ -134,7 +134,7 @@ mod test {
             let value = block_iterator.value();
 
             keys_res.push(key[0]);
-            values_res.push(from_utf8(&value).unwrap().to_string());
+            values_res.push(from_utf8(value).unwrap().to_string());
 
             block_iterator.next();
         }
@@ -176,7 +176,7 @@ mod test {
             let value = block_iterator.value();
 
             keys_res.push(key[0]);
-            values_res.push(from_utf8(&value).unwrap().to_string());
+            values_res.push(from_utf8(value).unwrap().to_string());
 
             block_iterator.next();
         }

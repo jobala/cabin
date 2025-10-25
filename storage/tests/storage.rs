@@ -67,7 +67,7 @@ fn scan_items() {
     let mut expected_keys = vec![];
     let mut expected_values = vec![];
 
-    let mut iter = storage.scan(Unbounded, Unbounded);
+    let mut iter = storage.scan(Unbounded, Unbounded).unwrap();
     while iter.is_valid() {
         expected_keys.push(iter.key().to_vec());
         expected_values.push(iter.value().to_vec());
