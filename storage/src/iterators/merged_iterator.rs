@@ -170,7 +170,7 @@ mod test {
         let mut res = vec![];
 
         for item in items {
-            let memtable = Memtable::default();
+            let memtable = Memtable::new(0);
 
             for (key, val) in item {
                 let _ = memtable.put(key, val);

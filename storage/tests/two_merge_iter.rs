@@ -100,7 +100,7 @@ fn create_iterators(items: Vec<HashMap<&[u8; 1], &[u8; 1]>>) -> Vec<MemtableIter
     let mut res = vec![];
 
     for item in items {
-        let memtable = Memtable::default();
+        let memtable = Memtable::new(1);
 
         for (key, val) in item {
             let _ = memtable.put(key, val);

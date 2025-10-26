@@ -1,6 +1,7 @@
 pub mod common;
 pub mod iterators;
 pub mod lsm_storage;
+mod lsm_util;
 pub mod memtable;
 
 mod block;

@@ -1,10 +1,19 @@
 use cabin_storage::Config;
 use cabin_storage::common::iterator::StorageIterator;
 use std::ops::Bound::Unbounded;
+use tempfile::tempdir;
+
+use crate::util::file::get_temp_dir;
+
+mod util;
 
 #[test]
 fn get_returns_latest_entry() {
-    let config = Config { sst_size: 2 };
+    let config = Config {
+        sst_size: 2,
+        block_size: 32,
+        db_dir: get_temp_dir(),
+    };
     let storage = cabin_storage::new(config);
     let entries = vec![
         (b"age", b"20"),
@@ -23,7 +32,11 @@ fn get_returns_latest_entry() {
 
 #[test]
 fn can_read_frozen_memtable() {
-    let config = Config { sst_size: 2 };
+    let config = Config {
+        sst_size: 2,
+        block_size: 32,
+        db_dir: get_temp_dir(),
+    };
     let storage = cabin_storage::new(config);
     let entries = vec![(b"1", b"20"), (b"2", b"21"), (b"3", b"22"), (b"4", b"23")];
 
@@ -38,7 +51,11 @@ fn can_read_frozen_memtable() {
 #[test]
 #[should_panic]
 fn get_invalid_key() {
-    let config = Config { sst_size: 2 };
+    let config = Config {
+        sst_size: 2,
+        block_size: 32,
+        db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
+    };
     let storage = cabin_storage::new(config);
 
     storage.get(b"1").unwrap();
@@ -46,7 +63,11 @@ fn get_invalid_key() {
 
 #[test]
 fn scan_items() {
-    let config = Config { sst_size: 10 };
+    let config = Config {
+        sst_size: 10,
+        block_size: 32,
+        db_dir: get_temp_dir(),
+    };
     let storage = cabin_storage::new(config);
     let entries = vec![
         (b"e", b"4"),
