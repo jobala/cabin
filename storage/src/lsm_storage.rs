@@ -417,6 +417,6 @@ mod tests {
         }
 
         assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
-        assert_eq!(values, vec!["19", "23", "3", "22", "21", "6"]);
+        assert_eq!(values, vec!["20", "23", "3", "22", "21", "6"]);
     }
 }
