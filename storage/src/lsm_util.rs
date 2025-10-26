@@ -30,7 +30,7 @@ pub(crate) fn load_sstables(
                     .expect("failed to open sstable");
 
                 l0_sstables.push(sst.id);
-                sstables.insert(0, Arc::new(sst));
+                sstables.insert(sst.id, Arc::new(sst));
             }
             Err(err) => return Err(anyhow!("{:?}", err)),
         }
@@ -41,4 +41,21 @@ pub(crate) fn load_sstables(
 
 pub(crate) fn create_db_dir(path: &Path) {
     fs::create_dir_all(path.join("sst")).expect("failed to create db dir");
+}
+
+pub fn get_entries() -> Vec<(&'static [u8], &'static [u8])> {
+    vec![
+        (b"a", b"1"),
+        (b"b", b"2"),
+        (b"c", b"3"),
+        (b"d", b"4"),
+        (b"e", b"5"),
+        (b"f", b"6"),
+        (b"g", b"7"),
+        (b"h", b"8"),
+        (b"i", b"9"),
+        (b"j", b"10"),
+        (b"k", b"11"),
+        (b"l", b"12"),
+    ]
 }

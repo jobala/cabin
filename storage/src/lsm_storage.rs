@@ -50,15 +50,20 @@ pub fn new(config: Config) -> Storage {
     let db_dir = Path::new(&config.db_dir);
     create_db_dir(db_dir);
     let block_cache = Arc::new(BlockCache::new(1 << 20)); // 4gb
-    let (l0_sstables, sstables) = load_sstables(&db_dir, block_cache).expect("loaded sstables");
+    let (l0_sstables, sstables) = load_sstables(db_dir, block_cache).expect("loaded sstables");
+
+    let sst_id = match l0_sstables.iter().max() {
+        Some(id) => id + 1,
+        None => 0,
+    };
 
     Storage {
         config,
-        sst_id: AtomicUsize::new(0),
+        sst_id: AtomicUsize::new(sst_id),
         state_lock: Mutex::new(()),
         block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
         state: RwLock::new(Arc::new(StorageState {
-            memtable: Arc::new(Memtable::new(0)),
+            memtable: Arc::new(Memtable::new(sst_id)),
             frozen_memtables: Vec::new(),
             l0_sstables,
             sstables,
@@ -183,8 +188,11 @@ impl Storage {
             let mut frozen_memtables = guard.frozen_memtables.clone();
             frozen_memtables.insert(0, memtable);
 
+            self.inc_sst_id();
+            let id = self.sst_id.load(SeqCst);
+
             *guard = Arc::new(StorageState {
-                memtable: Arc::new(Memtable::new(self.next_sst_id())),
+                memtable: Arc::new(Memtable::new(id)),
                 frozen_memtables,
                 l0_sstables: guard.l0_sstables.clone(),
                 sstables: guard.sstables.clone(),
@@ -225,18 +233,22 @@ impl Storage {
         Ok(())
     }
 
-    fn next_sst_id(&self) -> usize {
+    fn inc_sst_id(&self) -> usize {
         self.sst_id.fetch_add(1, SeqCst)
     }
 
     fn sst_path(&self, id: usize) -> String {
-        format!("{}/{}.sst", self.config.db_dir, id)
+        format!("{}/sst/{}.sst", self.config.db_dir, id)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::str::from_utf8;
+
     use tempfile::tempdir;
+
+    use crate::lsm_util::{self, get_entries};
 
     use super::*;
 
@@ -259,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn test_flushing_frozen_memtable() {
+    fn can_flush_frozen_memtable() {
         let config = Config {
             sst_size: 4,
             block_size: 32,
@@ -282,11 +294,129 @@ mod tests {
     }
 
     #[test]
-    fn test_loading_sstables() {}
+    fn loads_sstables() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+        };
+        let storage = new(config);
+
+        let input = vec![b"1", b"2", b"3", b"4", b"5"];
+        for entry in input {
+            storage.put(entry, entry).unwrap();
+        }
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // new storage instance
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+        };
+
+        let storage = new(config);
+        assert_eq!(1, storage.state.read().unwrap().l0_sstables.len());
+        assert_eq!(0, storage.state.read().unwrap().l0_sstables[0]);
+    }
 
     #[test]
-    fn test_scanning_storage_with_empty_memtables_and_filled_sstables() {}
+    fn scans_storage_with_empty_memtables_and_filled_sstables() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // new storage instance
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+        };
+
+        let storage = new(config);
+        let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+        let mut res = vec![];
+
+        while iter.is_valid() {
+            res.push(iter.key().to_vec());
+            let _ = iter.next();
+        }
+
+        assert_eq!(res, vec![b"a", b"b"]);
+    }
 
     #[test]
-    fn test_scanning_filled_memtables_and_sstables() {}
+    fn scans_through_filled_memtables_and_sstables() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create sstables with  a, b, c, d, e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // new storage instance
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+        };
+
+        let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
+        let storage = new(config);
+        for (key, value) in new_entries {
+            let _ = storage.put(key, value);
+        }
+
+        let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+        let mut keys = vec![];
+        let mut values = vec![];
+
+        while iter.is_valid() {
+            println!(
+                "key: {:?}, value: {:?}",
+                from_utf8(iter.key()).unwrap(),
+                from_utf8(iter.value()).unwrap()
+            );
+            let k = from_utf8(iter.key()).unwrap();
+            let v = from_utf8(iter.value()).unwrap();
+
+            keys.push(String::from(k));
+            values.push(String::from(v));
+
+            let _ = iter.next();
+        }
+
+        assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
+        assert_eq!(values, vec!["19", "23", "3", "22", "21", "6"]);
+    }
 }
