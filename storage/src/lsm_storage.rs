@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
-    fs,
     ops::Bound,
+    path::Path,
     sync::{
         Arc, Mutex, MutexGuard, RwLock,
         atomic::{AtomicUsize, Ordering::SeqCst},
@@ -9,12 +9,13 @@ use std::{
 };
 
 use crate::{
-    FileObject, SSTable, SSTableBuilder, SSTableIterator,
+    SSTable, SSTableBuilder, SSTableIterator,
     common::{errors::KeyNotFound, iterator::StorageIterator},
     iterators::{
         lsm_iterator::LsmIterator, merged_iterator::MergedIterator,
         two_merge_iterator::TwoMergeIterator,
     },
+    lsm_util::{create_db_dir, load_sstables},
     memtable::{memtable_iterator::map_bound, table::Memtable},
     sst::BlockCache,
 };
@@ -28,7 +29,6 @@ pub struct Storage {
     state_lock: Mutex<()>,
     sst_id: AtomicUsize,
     config: Config,
-    db_dir: String,
 }
 
 #[derive(Debug)]
@@ -43,17 +43,17 @@ struct StorageState {
 pub struct Config {
     pub sst_size: usize,
     pub block_size: usize,
+    pub db_dir: String,
 }
 
 pub fn new(config: Config) -> Storage {
-    let db_dir = ".cabin";
+    let db_dir = Path::new(&config.db_dir);
+    create_db_dir(db_dir);
     let block_cache = Arc::new(BlockCache::new(1 << 20)); // 4gb
-
-    let (l0_sstables, sstables) = load_sstables(".cabin/sst", block_cache);
+    let (l0_sstables, sstables) = load_sstables(&db_dir, block_cache).expect("loaded sstables");
 
     Storage {
         config,
-        db_dir: db_dir.to_string(),
         sst_id: AtomicUsize::new(0),
         state_lock: Mutex::new(()),
         block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
@@ -230,38 +230,22 @@ impl Storage {
     }
 
     fn sst_path(&self, id: usize) -> String {
-        format!("{}/sst/{}.sst", self.db_dir, id)
+        format!("{}/{}.sst", self.config.db_dir, id)
     }
-}
-
-fn load_sstables(
-    path: &str,
-    block_cache: Arc<BlockCache>,
-) -> (Vec<usize>, HashMap<usize, Arc<SSTable>>) {
-    let mut l0_sstables = vec![];
-    let mut sstables = HashMap::new();
-
-    for file_path in fs::read_dir(path).unwrap() {
-        let sst_path = file_path.unwrap().path();
-        let file = FileObject::open(sst_path.as_path()).expect("failed to open file");
-        let sst = SSTable::open(0, block_cache.clone(), file).expect("failed to open sstable");
-
-        l0_sstables.push(sst.id);
-        sstables.insert(0, Arc::new(sst));
-    }
-
-    (l0_sstables, sstables)
 }
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
     use super::*;
 
     #[test]
     fn filled_up_memtables_are_frozen() {
         let config = Config {
             sst_size: 4,
-            block_size: 4,
+            block_size: 32,
+            db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
         };
         let storage = new(config);
 
@@ -275,7 +259,27 @@ mod tests {
     }
 
     #[test]
-    fn test_flushing_frozen_memtable() {}
+    fn test_flushing_frozen_memtable() {
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
+        };
+        let storage = new(config);
+
+        let input = vec![b"1", b"2", b"3", b"4", b"5"];
+        for entry in input {
+            storage.put(entry, entry).unwrap();
+        }
+
+        assert_eq!(2, storage.state.read().unwrap().frozen_memtables.len());
+        assert_eq!(2, storage.state.read().unwrap().memtable.get_size());
+
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable was frozen");
+        assert_eq!(1, storage.state.read().unwrap().frozen_memtables.len());
+    }
 
     #[test]
     fn test_loading_sstables() {}
