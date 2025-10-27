@@ -1,3 +1,3 @@
 # Cabin Storage
 
-An LSM based embeddable storage engine
+An LSM based embedded storage engine
