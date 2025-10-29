@@ -12,11 +12,11 @@ use crate::sst::table::{BlockCache, SSTable};
 
 #[derive(Debug)]
 pub struct SSTableBuilder {
+    pub(crate) meta: Vec<BlockMeta>,
     builder: BlockBuilder,
     first_key: Vec<u8>,
     last_key: Vec<u8>,
     data: Vec<u8>,
-    pub(crate) meta: Vec<BlockMeta>,
     block_size: usize,
 }
 

@@ -6,10 +6,11 @@ use std::{
         Arc, Mutex, MutexGuard, RwLock,
         atomic::{AtomicUsize, Ordering::SeqCst},
     },
+    thread,
 };
 
 use crate::{
-    SSTable, SSTableBuilder, SSTableIterator,
+    SSTable, SSTableIterator,
     common::{errors::KeyNotFound, iterator::StorageIterator},
     iterators::{
         lsm_iterator::LsmIterator, merged_iterator::MergedIterator,
@@ -24,25 +25,28 @@ use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct Storage {
-    state: RwLock<Arc<StorageState>>,
-    block_cache: Arc<BlockCache>,
-    state_lock: Mutex<()>,
-    sst_id: AtomicUsize,
-    config: Config,
+    pub(crate) state: RwLock<Arc<StorageState>>,
+    pub(crate) config: Config,
+    pub(crate) block_cache: Arc<BlockCache>,
+    pub(crate) state_lock: Mutex<()>,
+    pub(crate) sst_id: AtomicUsize,
+    // pub(crate) flush_thread: Mutex<Option<thread::JoinHandle<()>>>,
+    // pub(crate) flush_notifier: crossbeam::channel::Sender<()>,
 }
 
 #[derive(Debug)]
-struct StorageState {
-    memtable: Arc<Memtable>,
-    frozen_memtables: Vec<Arc<Memtable>>,
-    l0_sstables: Vec<usize>,
-    sstables: HashMap<usize, Arc<SSTable>>,
+pub(crate) struct StorageState {
+    pub(crate) memtable: Arc<Memtable>,
+    pub(crate) frozen_memtables: Vec<Arc<Memtable>>,
+    pub(crate) l0_sstables: Vec<usize>,
+    pub(crate) sstables: HashMap<usize, Arc<SSTable>>,
 }
 
 #[derive(Debug)]
 pub struct Config {
     pub sst_size: usize,
     pub block_size: usize,
+    pub num_memtable_limit: usize,
     pub db_dir: String,
 }
 
@@ -202,43 +206,8 @@ impl Storage {
         }
     }
 
-    fn flush_frozen_memtable(&self) -> Result<()> {
-        let mut sst_builder = SSTableBuilder::new(self.config.block_size);
-        let mut guard = self.state.write().unwrap();
-
-        let mut memtables = guard.frozen_memtables.clone();
-        let mut l0_sstables = guard.l0_sstables.clone();
-        let mut sstables = guard.sstables.clone();
-
-        let Some(memtable) = memtables.pop() else {
-            return Ok(());
-        };
-        memtable.flush(&mut sst_builder)?;
-
-        let sst = sst_builder.build(
-            memtable.id,
-            self.block_cache.clone(),
-            self.sst_path(memtable.id),
-        )?;
-        l0_sstables.push(memtable.id);
-        sstables.insert(memtable.id, Arc::new(sst));
-
-        *guard = Arc::new(StorageState {
-            memtable: guard.memtable.clone(),
-            frozen_memtables: memtables,
-            l0_sstables,
-            sstables,
-        });
-
-        Ok(())
-    }
-
     fn inc_sst_id(&self) -> usize {
         self.sst_id.fetch_add(1, SeqCst)
-    }
-
-    fn sst_path(&self, id: usize) -> String {
-        format!("{}/sst/{}.sst", self.config.db_dir, id)
     }
 }
 
@@ -248,7 +217,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::lsm_util::{self, get_entries};
+    use crate::lsm_util::get_entries;
 
     use super::*;
 
@@ -402,11 +371,6 @@ mod tests {
         let mut values = vec![];
 
         while iter.is_valid() {
-            println!(
-                "key: {:?}, value: {:?}",
-                from_utf8(iter.key()).unwrap(),
-                from_utf8(iter.value()).unwrap()
-            );
             let k = from_utf8(iter.key()).unwrap();
             let v = from_utf8(iter.value()).unwrap();
 
@@ -415,6 +379,22 @@ mod tests {
 
             let _ = iter.next();
         }
+
+        // expect the first frozen memtable to have id 3
+        // we already have sstables with id 0, 1 & 2
+        // we use .last here because frozen memtables are stored newest to oldest
+        // with oldest being the first memtable to be frozen
+        assert_eq!(
+            3,
+            storage
+                .state
+                .read()
+                .unwrap()
+                .frozen_memtables
+                .last()
+                .unwrap()
+                .id
+        );
 
         assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
         assert_eq!(values, vec!["20", "23", "3", "22", "21", "6"]);
