@@ -1,5 +1,9 @@
 use anyhow::Result;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use crate::{SSTableBuilder, Storage, lsm_storage::StorageState};
 
@@ -51,4 +55,16 @@ impl Storage {
     fn sst_path(&self, id: usize) -> String {
         format!("{}/sst/{}.sst", self.config.db_dir, id)
     }
+}
+
+// TODO: suppot msg passing
+pub fn spawn_flusher(storage: Arc<Storage>) -> JoinHandle<()> {
+    let this = storage.clone();
+
+    thread::spawn(move || {
+        loop {
+            this.trigger_flush().expect("memtable to have been flushed");
+            thread::sleep(Duration::from_millis(50));
+        }
+    })
 }

@@ -6,7 +6,6 @@ use std::{
         Arc, Mutex, MutexGuard, RwLock,
         atomic::{AtomicUsize, Ordering::SeqCst},
     },
-    thread,
 };
 
 use crate::{
@@ -30,8 +29,6 @@ pub struct Storage {
     pub(crate) block_cache: Arc<BlockCache>,
     pub(crate) state_lock: Mutex<()>,
     pub(crate) sst_id: AtomicUsize,
-    // pub(crate) flush_thread: Mutex<Option<thread::JoinHandle<()>>>,
-    // pub(crate) flush_notifier: crossbeam::channel::Sender<()>,
 }
 
 #[derive(Debug)]
@@ -50,10 +47,10 @@ pub struct Config {
     pub db_dir: String,
 }
 
-pub fn new(config: Config) -> Storage {
+pub fn new(config: Config) -> Arc<Storage> {
     let db_dir = Path::new(&config.db_dir);
     create_db_dir(db_dir);
-    let block_cache = Arc::new(BlockCache::new(1 << 20)); // 4gb
+    let block_cache = Arc::new(BlockCache::new(4096));
     let (l0_sstables, sstables) = load_sstables(db_dir, block_cache).expect("loaded sstables");
 
     let sst_id = match l0_sstables.iter().max() {
@@ -61,7 +58,7 @@ pub fn new(config: Config) -> Storage {
         None => 0,
     };
 
-    Storage {
+    Arc::new(Storage {
         config,
         sst_id: AtomicUsize::new(sst_id),
         state_lock: Mutex::new(()),
@@ -72,7 +69,7 @@ pub fn new(config: Config) -> Storage {
             l0_sstables,
             sstables,
         })),
-    }
+    })
 }
 
 impl Storage {
@@ -227,6 +224,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
+            num_memtable_limit: 5,
         };
         let storage = new(config);
 
@@ -245,6 +243,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
+            num_memtable_limit: 5,
         };
         let storage = new(config);
 
@@ -269,6 +268,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
         };
         let storage = new(config);
 
@@ -285,6 +285,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
         };
 
         let storage = new(config);
@@ -299,6 +300,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
         };
         let storage = new(config);
 
@@ -314,6 +316,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
         };
 
         let storage = new(config);
@@ -335,6 +338,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
         };
         let storage = new(config);
 
@@ -358,6 +362,7 @@ mod tests {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
         };
 
         let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
