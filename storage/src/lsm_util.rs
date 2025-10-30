@@ -15,7 +15,6 @@ pub(crate) fn load_sstables(
         match entry {
             Ok(dir_entry) => {
                 let sst_path = dir_entry.path();
-
                 let split_path = sst_path
                     .file_name()
                     .unwrap()

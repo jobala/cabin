@@ -26,7 +26,7 @@ impl Storage {
             self.block_cache.clone(),
             self.sst_path(memtable.id),
         )?;
-        l0_sstables.push(memtable.id);
+        l0_sstables.insert(0, memtable.id);
         sstables.insert(memtable.id, Arc::new(sst));
 
         *guard = Arc::new(StorageState {
@@ -63,7 +63,7 @@ pub fn spawn_flusher(storage: Arc<Storage>) -> JoinHandle<()> {
 
     thread::spawn(move || {
         loop {
-            this.trigger_flush().expect("memtable to have been flushed");
+            this.flush().expect("memtable to have been flushed");
             thread::sleep(Duration::from_millis(50));
         }
     })
