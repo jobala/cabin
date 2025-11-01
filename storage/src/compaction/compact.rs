@@ -20,6 +20,9 @@ impl Storage {
             guard.clone()
         };
         let ssts_to_compact = state.l0_sstables.clone();
+        if ssts_to_compact.is_empty() {
+            return Ok(());
+        }
 
         let mut iters = vec![];
         for sst_id in ssts_to_compact.iter() {
