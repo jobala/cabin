@@ -12,8 +12,8 @@ use crate::{
     SSTable, SSTableIterator,
     common::{errors::KeyNotFound, iterator::StorageIterator},
     iterators::{
-        lsm_iterator::LsmIterator, merged_iterator::MergedIterator,
-        two_merge_iterator::TwoMergeIterator,
+        concat_iterator::ConcatIterator, lsm_iterator::LsmIterator,
+        merged_iterator::MergedIterator, two_merge_iterator::TwoMergeIterator,
     },
     lsm_util::{create_db_dir, load_sstables},
     memtable::{memtable_iterator::map_bound, table::Memtable},
@@ -106,7 +106,7 @@ impl Storage {
             }
         }
 
-        // search in ssts
+        // search in l1 ssts
         if res.is_none() {
             let mut table_iters = Vec::with_capacity(state.l0_sstables.len());
             for table_id in state.l0_sstables.iter() {
@@ -122,6 +122,25 @@ impl Storage {
             let merged_iter = MergedIterator::new(table_iters);
             if !merged_iter.key().is_empty() && merged_iter.key() == key {
                 res = Some(Bytes::copy_from_slice(merged_iter.value()))
+            } else {
+                res = None;
+            }
+        }
+
+        // search in l1 sstables
+        if res.is_none() {
+            let mut tables = Vec::with_capacity(state.levels[0].1.len());
+            for table_id in state.levels[0].1.iter() {
+                let table = state.sstables[table_id].clone();
+                if key < table.first_key() || key > table.last_key() {
+                    continue;
+                }
+                tables.push(table);
+            }
+
+            let concat_iter = ConcatIterator::create_and_seek_to_key(tables, key).unwrap();
+            if !concat_iter.key().is_empty() && concat_iter.key() == key {
+                res = Some(Bytes::copy_from_slice(concat_iter.value()))
             } else {
                 res = None;
             }
@@ -170,9 +189,30 @@ impl Storage {
             table_iters.push(iter);
         }
 
+        let concat_iter = {
+            let mut tables = Vec::with_capacity(state.levels[0].1.len());
+            for table_id in state.levels[0].1.iter() {
+                let table = state.sstables[table_id].clone();
+                tables.push(table);
+            }
+            match lower {
+                Bound::Included(key) => ConcatIterator::create_and_seek_to_key(tables, key)?,
+                Bound::Unbounded => ConcatIterator::create_and_seek_to_first(tables)?,
+                Bound::Excluded(key) => {
+                    let mut iter = ConcatIterator::create_and_seek_to_key(tables, key)?;
+
+                    if iter.is_valid() && iter.key() == key {
+                        iter.next()?;
+                    }
+                    iter
+                }
+            }
+        };
+
         let sst_iters = MergedIterator::new(table_iters);
-        let inner = TwoMergeIterator::create(mem_iters, sst_iters).unwrap();
-        Ok(LsmIterator::new(inner, map_bound(upper)))
+        let mem_l0 = TwoMergeIterator::create(mem_iters, sst_iters).unwrap();
+        let mem_l0_l1 = TwoMergeIterator::create(mem_l0, concat_iter).unwrap();
+        Ok(LsmIterator::new(mem_l0_l1, map_bound(upper)))
     }
 
     fn try_freeze(&self, size: usize) {
