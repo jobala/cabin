@@ -37,6 +37,7 @@ pub(crate) struct StorageState {
     pub(crate) frozen_memtables: Vec<Arc<Memtable>>,
     pub(crate) l0_sstables: Vec<usize>,
     pub(crate) sstables: HashMap<usize, Arc<SSTable>>,
+    pub(crate) levels: Vec<(usize, Vec<usize>)>,
 }
 
 #[derive(Debug)]
@@ -64,10 +65,11 @@ pub fn new(config: Config) -> Arc<Storage> {
         state_lock: Mutex::new(()),
         block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
         state: RwLock::new(Arc::new(StorageState {
-            memtable: Arc::new(Memtable::new(sst_id)),
-            frozen_memtables: Vec::new(),
             l0_sstables,
             sstables,
+            levels: vec![(0, vec![])],
+            frozen_memtables: Vec::new(),
+            memtable: Arc::new(Memtable::new(sst_id)),
         })),
     })
 }
@@ -189,22 +191,23 @@ impl Storage {
             let mut frozen_memtables = guard.frozen_memtables.clone();
             frozen_memtables.insert(0, memtable);
 
-            self.inc_sst_id();
-            let id = self.sst_id.load(SeqCst);
+            let id = self.get_sst_id();
 
             *guard = Arc::new(StorageState {
                 memtable: Arc::new(Memtable::new(id)),
                 frozen_memtables,
                 l0_sstables: guard.l0_sstables.clone(),
                 sstables: guard.sstables.clone(),
+                levels: guard.levels.clone(),
             });
 
             drop(guard);
         }
     }
 
-    fn inc_sst_id(&self) -> usize {
-        self.sst_id.fetch_add(1, SeqCst)
+    pub(crate) fn get_sst_id(&self) -> usize {
+        self.sst_id.fetch_add(1, SeqCst);
+        self.sst_id.load(SeqCst)
     }
 }
 

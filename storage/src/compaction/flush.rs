@@ -7,6 +7,8 @@ use std::{
 
 use crate::{SSTableBuilder, Storage, lsm_storage::StorageState};
 
+const FLUSH_INTERVAL: Duration = Duration::from_millis(50);
+
 impl Storage {
     pub(crate) fn flush_frozen_memtable(&self) -> Result<()> {
         let mut sst_builder = SSTableBuilder::new(self.config.block_size);
@@ -32,6 +34,7 @@ impl Storage {
         *guard = Arc::new(StorageState {
             memtable: guard.memtable.clone(),
             frozen_memtables: memtables,
+            levels: guard.levels.clone(),
             l0_sstables,
             sstables,
         });
@@ -52,19 +55,18 @@ impl Storage {
         Ok(())
     }
 
-    fn sst_path(&self, id: usize) -> String {
+    pub fn sst_path(&self, id: usize) -> String {
         format!("{}/sst/{}.sst", self.config.db_dir, id)
     }
-}
 
-// TODO: suppot msg passing
-pub fn spawn_flusher(storage: Arc<Storage>) -> JoinHandle<()> {
-    let this = storage.clone();
+    pub fn spawn_flusher(self: &Arc<Self>) -> JoinHandle<()> {
+        let this = self.clone();
 
-    thread::spawn(move || {
-        loop {
-            this.flush().expect("memtable to have been flushed");
-            thread::sleep(Duration::from_millis(50));
-        }
-    })
+        thread::spawn(move || {
+            loop {
+                this.trigger_flush().expect("memtable to have been flushed");
+                thread::sleep(FLUSH_INTERVAL);
+            }
+        })
+    }
 }

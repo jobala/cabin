@@ -1,38 +1,37 @@
-use std::{collections::HashMap, fs, path::Path, sync::Arc};
-
-use anyhow::{Result, anyhow};
+use anyhow::Result;
+use std::{cmp::Reverse, collections::HashMap, fs, io, path::Path, sync::Arc, time::SystemTime};
 
 use crate::{FileObject, SSTable, sst::BlockCache};
 
-pub(crate) fn load_sstables(
-    path: &Path,
-    block_cache: Arc<BlockCache>,
-) -> Result<(Vec<usize>, HashMap<usize, Arc<SSTable>>)> {
+type LoadedSstables = (Vec<usize>, HashMap<usize, Arc<SSTable>>);
+
+fn read_dir_sorted<P: AsRef<Path>>(path: P) -> io::Result<Vec<fs::DirEntry>> {
+    let mut entries: Vec<fs::DirEntry> = fs::read_dir(path)?.filter_map(Result::ok).collect();
+    entries.sort_by_key(|entry| {
+        Reverse(
+            entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH),
+        )
+    });
+    Ok(entries)
+}
+
+pub(crate) fn load_sstables(path: &Path, block_cache: Arc<BlockCache>) -> Result<LoadedSstables> {
     let mut l0_sstables = vec![];
     let mut sstables = HashMap::new();
 
-    for entry in fs::read_dir(path.join("sst")).unwrap() {
-        match entry {
-            Ok(dir_entry) => {
-                let sst_path = dir_entry.path();
-                let split_path = sst_path
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .split(".")
-                    .collect::<Vec<&str>>();
+    for entry in read_dir_sorted(path.join("sst")).unwrap() {
+        let sst_path = entry.path();
+        let filename = sst_path.file_name().unwrap().to_str().unwrap();
+        let sst_id = filename.rsplit_once(".").unwrap().0.parse().unwrap();
 
-                let sst_id = split_path.first().unwrap().parse().unwrap();
-                let file = FileObject::open(sst_path.as_path()).expect("failed to open file");
-                let sst = SSTable::open(sst_id, block_cache.clone(), file)
-                    .expect("failed to open sstable");
+        let file = FileObject::open(sst_path.as_path()).expect("failed to open file");
+        let sst = SSTable::open(sst_id, block_cache.clone(), file).expect("failed to open sstable");
 
-                l0_sstables.push(sst.id);
-                sstables.insert(sst.id, Arc::new(sst));
-            }
-            Err(err) => return Err(anyhow!("{:?}", err)),
-        }
+        l0_sstables.push(sst.id);
+        sstables.insert(sst.id, Arc::new(sst));
     }
 
     anyhow::Ok((l0_sstables, sstables))
