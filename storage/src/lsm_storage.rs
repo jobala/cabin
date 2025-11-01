@@ -37,6 +37,7 @@ pub(crate) struct StorageState {
     pub(crate) frozen_memtables: Vec<Arc<Memtable>>,
     pub(crate) l0_sstables: Vec<usize>,
     pub(crate) sstables: HashMap<usize, Arc<SSTable>>,
+    pub(crate) levels: Vec<(usize, Vec<usize>)>,
 }
 
 #[derive(Debug)]
@@ -64,10 +65,11 @@ pub fn new(config: Config) -> Arc<Storage> {
         state_lock: Mutex::new(()),
         block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
         state: RwLock::new(Arc::new(StorageState {
-            memtable: Arc::new(Memtable::new(sst_id)),
-            frozen_memtables: Vec::new(),
             l0_sstables,
             sstables,
+            levels: vec![(0, vec![])],
+            frozen_memtables: Vec::new(),
+            memtable: Arc::new(Memtable::new(sst_id)),
         })),
     })
 }
@@ -189,22 +191,23 @@ impl Storage {
             let mut frozen_memtables = guard.frozen_memtables.clone();
             frozen_memtables.insert(0, memtable);
 
-            self.inc_sst_id();
-            let id = self.sst_id.load(SeqCst);
+            let id = self.get_sst_id();
 
             *guard = Arc::new(StorageState {
                 memtable: Arc::new(Memtable::new(id)),
                 frozen_memtables,
                 l0_sstables: guard.l0_sstables.clone(),
                 sstables: guard.sstables.clone(),
+                levels: guard.levels.clone(),
             });
 
             drop(guard);
         }
     }
 
-    fn inc_sst_id(&self) -> usize {
-        self.sst_id.fetch_add(1, SeqCst)
+    pub(crate) fn get_sst_id(&self) -> usize {
+        self.sst_id.fetch_add(1, SeqCst);
+        self.sst_id.load(SeqCst)
     }
 }
 
@@ -400,6 +403,69 @@ mod tests {
                 .unwrap()
                 .id
         );
+
+        assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
+        assert_eq!(values, vec!["20", "23", "3", "22", "21", "6"]);
+    }
+
+    #[test]
+    fn reads_the_latest_version_of_a_key() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create sstables with  a, b, c, d, e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // new storage instance
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+
+        let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
+        let storage = new(config);
+        for (key, value) in new_entries {
+            let _ = storage.put(key, value);
+        }
+
+        // this will create an sst with a & e
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+        let mut keys = vec![];
+        let mut values = vec![];
+
+        while iter.is_valid() {
+            let k = from_utf8(iter.key()).unwrap();
+            let v = from_utf8(iter.value()).unwrap();
+
+            keys.push(String::from(k));
+            values.push(String::from(v));
+
+            let _ = iter.next();
+        }
 
         assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
         assert_eq!(values, vec!["20", "23", "3", "22", "21", "6"]);
