@@ -106,7 +106,7 @@ impl Storage {
             }
         }
 
-        // search in l1 ssts
+        // search in l0 ssts
         if res.is_none() {
             let mut table_iters = Vec::with_capacity(state.l0_sstables.len());
             for table_id in state.l0_sstables.iter() {
