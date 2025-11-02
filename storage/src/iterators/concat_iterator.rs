@@ -54,12 +54,18 @@ impl ConcatIterator {
 }
 
 impl StorageIterator for ConcatIterator {
-    fn value(&self) -> &[u8] {
-        self.current.as_ref().unwrap().value()
+    fn key(&self) -> &[u8] {
+        match self.current.as_ref() {
+            Some(iter) => iter.key(),
+            None => &[],
+        }
     }
 
-    fn key(&self) -> &[u8] {
-        self.current.as_ref().unwrap().key()
+    fn value(&self) -> &[u8] {
+        match self.current.as_ref() {
+            Some(iter) => iter.value(),
+            None => &[],
+        }
     }
 
     fn is_valid(&self) -> bool {
@@ -67,16 +73,20 @@ impl StorageIterator for ConcatIterator {
     }
 
     fn next(&mut self) -> anyhow::Result<()> {
-        if self.current.as_ref().unwrap().is_valid() {
-            self.current = self
-                .sstables
-                .get(self.next_sst_idx)
-                .map(|sstable| SSTableIterator::create_and_seek_to_first(sstable.clone()).unwrap());
+        match self.current.as_mut() {
+            Some(iter) => {
+                if !iter.is_valid() {
+                    self.current = self.sstables.get(self.next_sst_idx).map(|sstable| {
+                        SSTableIterator::create_and_seek_to_first(sstable.clone()).unwrap()
+                    });
 
-            self.next_sst_idx += 1;
-            return Ok(());
+                    self.next_sst_idx += 1;
+                    return Ok(());
+                }
+
+                iter.next()
+            }
+            _ => Ok(()),
         }
-
-        self.current.as_mut().unwrap().next()
     }
 }
