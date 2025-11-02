@@ -6,21 +6,26 @@ use bytes::Bytes;
 use crate::{
     SSTableIterator,
     common::iterator::StorageIterator,
-    iterators::{merged_iterator::MergedIterator, two_merge_iterator::TwoMergeIterator},
+    iterators::{
+        concat_iterator::ConcatIterator, merged_iterator::MergedIterator,
+        two_merge_iterator::TwoMergeIterator,
+    },
     memtable::memtable_iterator::MemtableIterator,
 };
 
-type LsmIteratorInner =
+type LsmIteratorInnerL0 =
     TwoMergeIterator<MergedIterator<MemtableIterator>, MergedIterator<SSTableIterator>>;
 
+type LsmIteratorInnerL1 = TwoMergeIterator<LsmIteratorInnerL0, ConcatIterator>;
+
 pub struct LsmIterator {
-    inner: LsmIteratorInner,
+    inner: LsmIteratorInnerL1,
     end_bound: Bound<Bytes>,
     valid: bool,
 }
 
 impl LsmIterator {
-    pub fn new(iter: LsmIteratorInner, upper: Bound<Bytes>) -> Self {
+    pub fn new(iter: LsmIteratorInnerL1, upper: Bound<Bytes>) -> Self {
         let mut lsm_iterator = Self {
             inner: iter,
             end_bound: upper,

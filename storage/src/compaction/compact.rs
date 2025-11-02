@@ -19,10 +19,12 @@ impl Storage {
             let guard = self.state.read().unwrap();
             guard.clone()
         };
-        let ssts_to_compact = state.l0_sstables.clone();
-        if ssts_to_compact.is_empty() {
+        let l0 = state.l0_sstables.clone();
+        if l0.is_empty() {
             return Ok(());
         }
+        let l1 = state.levels[0].1.clone();
+        let ssts_to_compact = [&l0[..], &l1[..]].concat();
 
         let mut iters = vec![];
         for sst_id in ssts_to_compact.iter() {
@@ -46,10 +48,15 @@ impl Storage {
         let mut sstables = write_guard.sstables.clone();
         let mut levels = write_guard.levels.clone();
 
-        for sst_id in ssts_to_compact.iter() {
+        for sst_id in l0.iter() {
             sstables.remove(sst_id);
             l0_sstables.retain(|&x| x != *sst_id);
+            remove_file(self.sst_path(*sst_id))?;
+        }
 
+        for sst_id in l1.iter() {
+            sstables.remove(sst_id);
+            levels[0].1.retain(|&x| x != *sst_id);
             remove_file(self.sst_path(*sst_id))?;
         }
 
@@ -81,9 +88,11 @@ impl Storage {
 
 #[cfg(test)]
 mod tests {
+    use std::{ops::Bound, str::from_utf8};
+
     use tempfile::tempdir;
 
-    use crate::{Config, lsm_util::get_entries, new};
+    use crate::{Config, common::iterator::StorageIterator, lsm_util::get_entries, new};
 
     #[test]
     fn test_compaction() {
@@ -116,5 +125,123 @@ mod tests {
 
         assert_eq!(curr_sst_count, initial_sst_count - 2);
         assert_eq!(l1_entries.len(), 1);
+    }
+
+    #[test]
+    fn scans_through_memtables_l0_l1_sstables() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create two sstables at l0
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // compact l0 sstables to an l1 sstable
+        storage.trigger_compaction().expect("compacted");
+
+        // create another l0 sstable
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
+        for (key, value) in new_entries {
+            let _ = storage.put(key, value);
+        }
+
+        let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+        let mut keys = vec![];
+        let mut values = vec![];
+
+        while iter.is_valid() {
+            let k = from_utf8(iter.key()).unwrap();
+            let v = from_utf8(iter.value()).unwrap();
+
+            keys.push(String::from(k));
+            values.push(String::from(v));
+
+            let _ = iter.next();
+        }
+
+        assert_eq!(
+            keys,
+            vec!["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"]
+        );
+        assert_eq!(
+            values,
+            vec![
+                "20", "23", "3", "22", "21", "6", "7", "8", "9", "10", "11", "12"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_can_latest_key_is_read_from_l1_sstables() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+        let mut entries = get_entries();
+
+        // adds a new version of key a=3
+        entries[2] = (b"a", b"3");
+
+        for (key, value) in entries {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create an sstables at l0 with a, b
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        // compact l0 sstables to an l1 sstable
+        storage.trigger_compaction().expect("compacted");
+
+        // will create an sstable at l0 with a, c. a newer version of the initially stored a
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage.trigger_compaction().expect("compacted");
+
+        let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
+        let mut keys = vec![];
+        let mut values = vec![];
+
+        while iter.is_valid() {
+            let k = from_utf8(iter.key()).unwrap();
+            let v = from_utf8(iter.value()).unwrap();
+
+            keys.push(String::from(k));
+            values.push(String::from(v));
+
+            let _ = iter.next();
+        }
+
+        assert_eq!(
+            keys,
+            vec!["a", "b", "d", "e", "f", "g", "h", "i", "j", "k", "l"]
+        );
+        assert_eq!(
+            values,
+            vec!["3", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
+        );
     }
 }

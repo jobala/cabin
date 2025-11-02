@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Ok;
+use anyhow::{Ok, Result};
 
 use crate::{SSTable, SSTableIterator, common::iterator::StorageIterator};
 
@@ -11,27 +11,27 @@ pub struct ConcatIterator {
 }
 
 impl ConcatIterator {
-    fn create_and_seek_to_first(sstables: Vec<Arc<SSTable>>) -> Self {
+    pub fn create_and_seek_to_first(sstables: Vec<Arc<SSTable>>) -> Result<Self> {
         if sstables.is_empty() {
-            return Self {
+            return Ok(Self {
                 current: None,
                 next_sst_idx: 0,
                 sstables,
-            };
+            });
         }
 
         let current = sstables
             .first()
             .map(|table| SSTableIterator::create_and_seek_to_first(table.clone()).unwrap());
 
-        Self {
+        Ok(Self {
             current,
             next_sst_idx: 1,
             sstables,
-        }
+        })
     }
 
-    fn create_and_seek_to_key(sstables: Vec<Arc<SSTable>>, key: &[u8]) -> Self {
+    pub fn create_and_seek_to_key(sstables: Vec<Arc<SSTable>>, key: &[u8]) -> Result<Self> {
         let mut idx = 0;
         for table in sstables.iter() {
             if key <= table.last_key() {
@@ -45,21 +45,27 @@ impl ConcatIterator {
             .get(idx)
             .map(|table| SSTableIterator::create_and_seek_to_key(table.clone(), key).unwrap());
 
-        Self {
+        Ok(Self {
             current,
             next_sst_idx: idx + 1,
             sstables,
-        }
+        })
     }
 }
 
 impl StorageIterator for ConcatIterator {
-    fn value(&self) -> &[u8] {
-        self.current.as_ref().unwrap().value()
+    fn key(&self) -> &[u8] {
+        match self.current.as_ref() {
+            Some(iter) => iter.key(),
+            None => &[],
+        }
     }
 
-    fn key(&self) -> &[u8] {
-        self.current.as_ref().unwrap().key()
+    fn value(&self) -> &[u8] {
+        match self.current.as_ref() {
+            Some(iter) => iter.value(),
+            None => &[],
+        }
     }
 
     fn is_valid(&self) -> bool {
@@ -67,16 +73,20 @@ impl StorageIterator for ConcatIterator {
     }
 
     fn next(&mut self) -> anyhow::Result<()> {
-        if self.current.as_ref().unwrap().is_valid() {
-            self.current = self
-                .sstables
-                .get(self.next_sst_idx)
-                .map(|sstable| SSTableIterator::create_and_seek_to_first(sstable.clone()).unwrap());
+        match self.current.as_mut() {
+            Some(iter) => {
+                if !iter.is_valid() {
+                    self.current = self.sstables.get(self.next_sst_idx).map(|sstable| {
+                        SSTableIterator::create_and_seek_to_first(sstable.clone()).unwrap()
+                    });
 
-            self.next_sst_idx += 1;
-            return Ok(());
+                    self.next_sst_idx += 1;
+                    return Ok(());
+                }
+
+                iter.next()
+            }
+            _ => Ok(()),
         }
-
-        self.current.as_mut().unwrap().next()
     }
 }
