@@ -90,6 +90,7 @@ impl Storage {
 mod tests {
     use std::{ops::Bound, str::from_utf8};
 
+    use bytes::Bytes;
     use tempfile::tempdir;
 
     use crate::{Config, common::iterator::StorageIterator, lsm_util::get_entries, new};
@@ -243,5 +244,43 @@ mod tests {
             values,
             vec!["3", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
         );
+    }
+
+    #[test]
+    fn test_get_key() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create two sstables at l0 with a, b, c & d
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // compact l0 sstables to an l1 sstable with keys a, b, c & d
+        storage.trigger_compaction().expect("compacted");
+
+        // create another l0 sstable, will have keys e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let l1_value = storage.get(b"a").expect("a exists");
+        assert_eq!(l1_value, Bytes::copy_from_slice(b"1"));
+
+        let l0_value = storage.get(b"e").expect("a exists");
+        assert_eq!(l0_value, Bytes::copy_from_slice(b"5"));
     }
 }
