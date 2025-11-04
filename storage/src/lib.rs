@@ -3,6 +3,7 @@ pub mod compaction;
 pub mod iterators;
 pub mod lsm_storage;
 mod lsm_util;
+mod manifest;
 pub mod memtable;
 
 mod block;

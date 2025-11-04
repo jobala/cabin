@@ -10,6 +10,7 @@ use anyhow::{Ok, Result};
 use crate::{
     SSTableBuilder, SSTableIterator, Storage, common::iterator::StorageIterator,
     iterators::merged_iterator::MergedIterator, lsm_storage::StorageState,
+    manifest::ManifestRecord::Compaction,
 };
 const COMPACT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -40,37 +41,44 @@ impl Storage {
             merged_iter.next()?;
         }
 
-        let id = self.get_sst_id();
-        let table = builder.build(id, self.block_cache.clone(), self.sst_path(id))?;
+        let compact_sst_id = {
+            let id = self.get_sst_id();
+            let table = builder.build(id, self.block_cache.clone(), self.sst_path(id))?;
 
-        let mut write_guard = self.state.write().unwrap();
-        let mut l0_sstables = write_guard.l0_sstables.clone();
-        let mut sstables = write_guard.sstables.clone();
-        let mut levels = write_guard.levels.clone();
+            let mut write_guard = self.state.write().unwrap();
+            let mut l0_sstables = write_guard.l0_sstables.clone();
+            let mut sstables = write_guard.sstables.clone();
+            let mut levels = write_guard.levels.clone();
 
-        for sst_id in l0.iter() {
-            sstables.remove(sst_id);
-            l0_sstables.retain(|&x| x != *sst_id);
-            remove_file(self.sst_path(*sst_id))?;
-        }
+            for sst_id in l0.iter() {
+                sstables.remove(sst_id);
+                l0_sstables.retain(|&x| x != *sst_id);
+                remove_file(self.sst_path(*sst_id))?;
+            }
 
-        for sst_id in l1.iter() {
-            sstables.remove(sst_id);
-            levels[0].1.retain(|&x| x != *sst_id);
-            remove_file(self.sst_path(*sst_id))?;
-        }
+            for sst_id in l1.iter() {
+                sstables.remove(sst_id);
+                levels[0].1.retain(|&x| x != *sst_id);
+                remove_file(self.sst_path(*sst_id))?;
+            }
 
-        sstables.insert(id, Arc::new(table));
-        levels[0].1.insert(0, id);
+            sstables.insert(id, Arc::new(table));
+            levels[0].1.insert(0, id);
 
-        *write_guard = Arc::new(StorageState {
-            memtable: write_guard.memtable.clone(),
-            frozen_memtables: write_guard.frozen_memtables.clone(),
-            l0_sstables,
-            sstables,
-            levels,
-        });
+            *write_guard = Arc::new(StorageState {
+                memtable: write_guard.memtable.clone(),
+                frozen_memtables: write_guard.frozen_memtables.clone(),
+                l0_sstables,
+                sstables,
+                levels,
+            });
 
+            id
+        };
+
+        let state_lock = self.state_lock.lock().unwrap();
+        self.manifest
+            .add_record(&state_lock, Compaction(compact_sst_id));
         Ok(())
     }
 
@@ -90,6 +98,7 @@ impl Storage {
 mod tests {
     use std::{ops::Bound, str::from_utf8};
 
+    use bytes::Bytes;
     use tempfile::tempdir;
 
     use crate::{Config, common::iterator::StorageIterator, lsm_util::get_entries, new};
@@ -243,5 +252,43 @@ mod tests {
             values,
             vec!["3", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
         );
+    }
+
+    #[test]
+    fn test_get_key() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create two sstables at l0 with a, b, c & d
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        // compact l0 sstables to an l1 sstable with keys a, b, c & d
+        storage.trigger_compaction().expect("compacted");
+
+        // create another l0 sstable, will have keys e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let l1_value = storage.get(b"a").expect("a exists");
+        assert_eq!(l1_value, Bytes::copy_from_slice(b"1"));
+
+        let l0_value = storage.get(b"e").expect("a exists");
+        assert_eq!(l0_value, Bytes::copy_from_slice(b"5"));
     }
 }

@@ -1,3 +1,5 @@
+use anyhow::Result;
+use bytes::Bytes;
 use std::{
     collections::HashMap,
     ops::Bound,
@@ -16,11 +18,10 @@ use crate::{
         merged_iterator::MergedIterator, two_merge_iterator::TwoMergeIterator,
     },
     lsm_util::{create_db_dir, load_sstables},
+    manifest::{Manifest, ManifestRecord},
     memtable::{memtable_iterator::map_bound, table::Memtable},
     sst::BlockCache,
 };
-use anyhow::Result;
-use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct Storage {
@@ -29,6 +30,7 @@ pub struct Storage {
     pub(crate) block_cache: Arc<BlockCache>,
     pub(crate) state_lock: Mutex<()>,
     pub(crate) sst_id: AtomicUsize,
+    pub(crate) manifest: Manifest,
 }
 
 #[derive(Debug)]
@@ -50,11 +52,28 @@ pub struct Config {
 
 pub fn new(config: Config) -> Arc<Storage> {
     let db_dir = Path::new(&config.db_dir);
+    let manifest_file = db_dir.join("manifest");
     create_db_dir(db_dir);
     let block_cache = Arc::new(BlockCache::new(4096));
-    let (l0_sstables, sstables) = load_sstables(db_dir, block_cache).expect("loaded sstables");
 
-    let sst_id = match l0_sstables.iter().max() {
+    let manifest;
+    let mut manifest_records: Vec<ManifestRecord> = vec![];
+
+    match Manifest::recover(&manifest_file) {
+        Ok((man, manifest_recs)) => {
+            manifest = man;
+            manifest_records = manifest_recs;
+        }
+        Err(_) => manifest = Manifest::create(manifest_file).unwrap(),
+    }
+
+    let (l0_sst_ids, l1_sst_ids, sstables) =
+        load_sstables(db_dir, block_cache, manifest_records).expect("loaded sstables");
+
+    let sst_id = match ([l0_sst_ids.clone(), l1_sst_ids.clone()].concat())
+        .iter()
+        .max()
+    {
         Some(id) => id + 1,
         None => 0,
     };
@@ -63,11 +82,12 @@ pub fn new(config: Config) -> Arc<Storage> {
         config,
         sst_id: AtomicUsize::new(sst_id),
         state_lock: Mutex::new(()),
-        block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
+        manifest,
+        block_cache: Arc::new(BlockCache::new(1 << 20)), // 1mb cache
         state: RwLock::new(Arc::new(StorageState {
-            l0_sstables,
+            l0_sstables: l0_sst_ids,
             sstables,
-            levels: vec![(0, vec![])],
+            levels: vec![(0, l1_sst_ids)],
             frozen_memtables: Vec::new(),
             memtable: Arc::new(Memtable::new(sst_id)),
         })),
@@ -106,7 +126,7 @@ impl Storage {
             }
         }
 
-        // search in l1 ssts
+        // search in l0 ssts
         if res.is_none() {
             let mut table_iters = Vec::with_capacity(state.l0_sstables.len());
             for table_id in state.l0_sstables.iter() {
@@ -509,5 +529,113 @@ mod tests {
 
         assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
         assert_eq!(values, vec!["20", "23", "3", "22", "21", "6"]);
+    }
+
+    #[test]
+    fn get_key_within_range() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create sstables with  a, b, c, d, e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage.trigger_compaction().expect("compacted");
+
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
+        for (key, value) in new_entries {
+            let _ = storage.put(key, value);
+        }
+
+        // this will create an sst with a & e
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let mut iter = storage
+            .scan(Bound::Included(b"d"), Bound::Included(b"f"))
+            .unwrap();
+        let mut keys = vec![];
+        let mut values = vec![];
+
+        while iter.is_valid() {
+            let k = from_utf8(iter.key()).unwrap();
+            let v = from_utf8(iter.value()).unwrap();
+
+            keys.push(String::from(k));
+            values.push(String::from(v));
+
+            let _ = iter.next();
+        }
+
+        assert_eq!(keys, vec!["d", "e", "f"]);
+        assert_eq!(values, vec!["22", "21", "6"]);
+    }
+
+    #[test]
+    fn test_manifest_recovery() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create sstables with  a, b, c, d, e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage.trigger_compaction().expect("compacted");
+
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage.trigger_compaction().expect("compacted");
+
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        let state = {
+            let guard = storage.state.read().unwrap();
+            guard.clone()
+        };
+
+        assert_eq!(state.l0_sstables, [3, 2]);
+        assert_eq!(state.levels[0].1, [8])
     }
 }

@@ -1,44 +1,56 @@
 use anyhow::Result;
-use std::{cmp::Reverse, collections::HashMap, fs, io, path::Path, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
-use crate::{FileObject, SSTable, sst::BlockCache};
+use crate::{FileObject, SSTable, manifest::ManifestRecord, sst::BlockCache};
 
-type LoadedSstables = (Vec<usize>, HashMap<usize, Arc<SSTable>>);
+type LoadedSstables = (Vec<usize>, Vec<usize>, HashMap<usize, Arc<SSTable>>);
 
-fn read_dir_sorted<P: AsRef<Path>>(path: P) -> io::Result<Vec<fs::DirEntry>> {
-    let mut entries: Vec<fs::DirEntry> = fs::read_dir(path)?.filter_map(Result::ok).collect();
-    entries.sort_by_key(|entry| {
-        Reverse(
-            entry
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(SystemTime::UNIX_EPOCH),
-        )
-    });
-    Ok(entries)
-}
-
-pub(crate) fn load_sstables(path: &Path, block_cache: Arc<BlockCache>) -> Result<LoadedSstables> {
-    let mut l0_sstables = vec![];
+pub(crate) fn load_sstables(
+    path: &Path,
+    block_cache: Arc<BlockCache>,
+    manifest_recs: Vec<ManifestRecord>,
+) -> Result<LoadedSstables> {
+    let mut l0 = vec![];
+    let mut l1 = vec![];
     let mut sstables = HashMap::new();
 
-    for entry in read_dir_sorted(path.join("sst")).unwrap() {
-        let sst_path = entry.path();
-        let filename = sst_path.file_name().unwrap().to_str().unwrap();
-        let sst_id = filename.rsplit_once(".").unwrap().0.parse().unwrap();
+    for record in manifest_recs {
+        match record {
+            ManifestRecord::Flush(sst_id) => {
+                l0.insert(0, sst_id);
+            }
+            ManifestRecord::Compaction(sst_id) => {
+                // during compaction all l0 sstables are compacted to a single l1 sstable
+                l0.clear();
 
-        let file = FileObject::open(sst_path.as_path()).expect("failed to open file");
-        let sst = SSTable::open(sst_id, block_cache.clone(), file).expect("failed to open sstable");
+                // we only support full compaction which means there's only one l1 sstable
+                l1 = vec![sst_id]
+            }
+            _ => {}
+        }
+    }
 
-        l0_sstables.push(sst.id);
+    for l0_sst_id in &l0 {
+        let sst_path = path.join(format!("{}.sst", l0_sst_id));
+        let file = FileObject::open(&sst_path).expect("failed to open file");
+        let sst =
+            SSTable::open(*l0_sst_id, block_cache.clone(), file).expect("failed to open sstable");
         sstables.insert(sst.id, Arc::new(sst));
     }
 
-    anyhow::Ok((l0_sstables, sstables))
+    for l1_sst_id in &l1 {
+        let sst_path = path.join(format!("{}.sst", l1_sst_id));
+        let file = FileObject::open(&sst_path).expect("failed to open file");
+        let sst =
+            SSTable::open(*l1_sst_id, block_cache.clone(), file).expect("failed to open sstable");
+        sstables.insert(sst.id, Arc::new(sst));
+    }
+
+    anyhow::Ok((l0, l1, sstables))
 }
 
 pub(crate) fn create_db_dir(path: &Path) {
-    fs::create_dir_all(path.join("sst")).expect("failed to create db dir");
+    fs::create_dir_all(path).expect("failed to create db dir");
 }
 
 pub fn get_entries() -> Vec<(&'static [u8], &'static [u8])> {
