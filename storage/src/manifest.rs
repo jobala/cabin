@@ -8,6 +8,7 @@ use anyhow::Result;
 use bytes::Buf;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug)]
 pub struct Manifest {
     file: Arc<Mutex<File>>,
 }
@@ -31,14 +32,12 @@ impl Manifest {
     }
 
     pub fn recover(path: impl AsRef<Path>) -> Result<(Self, Vec<ManifestRecord>)> {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .append(true)
-            .open(path)
-            .unwrap();
+        let mut file = OpenOptions::new().read(true).append(true).open(path)?;
+
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
         let mut buf_ptr = buf.as_slice();
+
         let mut records = Vec::new();
         while buf_ptr.has_remaining() {
             let len = buf_ptr.get_u64();
@@ -47,6 +46,7 @@ impl Manifest {
             buf_ptr.advance(len as usize);
             records.push(json);
         }
+
         Ok((
             Self {
                 file: Arc::new(Mutex::new(file)),

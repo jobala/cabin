@@ -5,40 +5,46 @@ use std::{
     time::Duration,
 };
 
-use crate::{SSTableBuilder, Storage, lsm_storage::StorageState};
+use crate::{SSTableBuilder, Storage, lsm_storage::StorageState, manifest::ManifestRecord::Flush};
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 
 impl Storage {
     pub(crate) fn flush_frozen_memtable(&self) -> Result<()> {
-        let mut sst_builder = SSTableBuilder::new(self.config.block_size);
-        let mut guard = self.state.write().unwrap();
+        let sst_id = {
+            let mut sst_builder = SSTableBuilder::new(self.config.block_size);
+            let mut guard = self.state.write().unwrap();
 
-        let mut memtables = guard.frozen_memtables.clone();
-        let mut l0_sstables = guard.l0_sstables.clone();
-        let mut sstables = guard.sstables.clone();
+            let mut memtables = guard.frozen_memtables.clone();
+            let mut l0_sstables = guard.l0_sstables.clone();
+            let mut sstables = guard.sstables.clone();
 
-        let Some(memtable) = memtables.pop() else {
-            return Ok(());
+            let Some(memtable) = memtables.pop() else {
+                return Ok(());
+            };
+            memtable.flush(&mut sst_builder)?;
+
+            let sst = sst_builder.build(
+                memtable.id,
+                self.block_cache.clone(),
+                self.sst_path(memtable.id),
+            )?;
+            l0_sstables.insert(0, memtable.id);
+            sstables.insert(memtable.id, Arc::new(sst));
+
+            *guard = Arc::new(StorageState {
+                memtable: guard.memtable.clone(),
+                frozen_memtables: memtables,
+                levels: guard.levels.clone(),
+                l0_sstables,
+                sstables,
+            });
+
+            memtable.id
         };
-        memtable.flush(&mut sst_builder)?;
 
-        let sst = sst_builder.build(
-            memtable.id,
-            self.block_cache.clone(),
-            self.sst_path(memtable.id),
-        )?;
-        l0_sstables.insert(0, memtable.id);
-        sstables.insert(memtable.id, Arc::new(sst));
-
-        *guard = Arc::new(StorageState {
-            memtable: guard.memtable.clone(),
-            frozen_memtables: memtables,
-            levels: guard.levels.clone(),
-            l0_sstables,
-            sstables,
-        });
-
+        let state_lock = self.state_lock.lock().unwrap();
+        self.manifest.add_record(&state_lock, Flush(sst_id));
         Ok(())
     }
 
@@ -56,7 +62,7 @@ impl Storage {
     }
 
     pub fn sst_path(&self, id: usize) -> String {
-        format!("{}/sst/{}.sst", self.config.db_dir, id)
+        format!("{}/{}.sst", self.config.db_dir, id)
     }
 
     pub fn spawn_flusher(self: &Arc<Self>) -> JoinHandle<()> {

@@ -16,6 +16,7 @@ use crate::{
         merged_iterator::MergedIterator, two_merge_iterator::TwoMergeIterator,
     },
     lsm_util::{create_db_dir, load_sstables},
+    manifest::{self, Manifest, ManifestRecord},
     memtable::{memtable_iterator::map_bound, table::Memtable},
     sst::BlockCache,
 };
@@ -29,6 +30,7 @@ pub struct Storage {
     pub(crate) block_cache: Arc<BlockCache>,
     pub(crate) state_lock: Mutex<()>,
     pub(crate) sst_id: AtomicUsize,
+    pub(crate) manifest: Manifest,
 }
 
 #[derive(Debug)]
@@ -50,11 +52,27 @@ pub struct Config {
 
 pub fn new(config: Config) -> Arc<Storage> {
     let db_dir = Path::new(&config.db_dir);
+    let manifest_file = db_dir.join("manifest");
     create_db_dir(db_dir);
     let block_cache = Arc::new(BlockCache::new(4096));
-    let (l0_sstables, sstables) = load_sstables(db_dir, block_cache).expect("loaded sstables");
 
-    let sst_id = match l0_sstables.iter().max() {
+    let manifest;
+    let mut manifest_records: Vec<ManifestRecord> = vec![];
+
+    match Manifest::recover(&manifest_file) {
+        Ok((man, manifest_recs)) => {
+            manifest = man;
+            manifest_records = manifest_recs;
+        }
+        Err(_) => manifest = Manifest::create(manifest_file).unwrap(),
+    }
+    let (l0_sstables, l1_sstables, sstables) =
+        load_sstables(db_dir, block_cache, manifest_records).expect("loaded sstables");
+
+    let sst_id = match ([l0_sstables.clone(), l1_sstables.clone()].concat())
+        .iter()
+        .max()
+    {
         Some(id) => id + 1,
         None => 0,
     };
@@ -63,11 +81,12 @@ pub fn new(config: Config) -> Arc<Storage> {
         config,
         sst_id: AtomicUsize::new(sst_id),
         state_lock: Mutex::new(()),
+        manifest,
         block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
         state: RwLock::new(Arc::new(StorageState {
             l0_sstables,
             sstables,
-            levels: vec![(0, vec![])],
+            levels: vec![(0, l1_sstables)],
             frozen_memtables: Vec::new(),
             memtable: Arc::new(Memtable::new(sst_id)),
         })),
@@ -568,4 +587,7 @@ mod tests {
         assert_eq!(keys, vec!["d", "e", "f"]);
         assert_eq!(values, vec!["22", "21", "6"]);
     }
+
+    #[test]
+    fn test_manifest_recovery() {}
 }

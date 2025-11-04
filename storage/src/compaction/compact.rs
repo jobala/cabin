@@ -10,6 +10,7 @@ use anyhow::{Ok, Result};
 use crate::{
     SSTableBuilder, SSTableIterator, Storage, common::iterator::StorageIterator,
     iterators::merged_iterator::MergedIterator, lsm_storage::StorageState,
+    manifest::ManifestRecord::Compaction,
 };
 const COMPACT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -40,37 +41,44 @@ impl Storage {
             merged_iter.next()?;
         }
 
-        let id = self.get_sst_id();
-        let table = builder.build(id, self.block_cache.clone(), self.sst_path(id))?;
+        let compact_sst_id = {
+            let id = self.get_sst_id();
+            let table = builder.build(id, self.block_cache.clone(), self.sst_path(id))?;
 
-        let mut write_guard = self.state.write().unwrap();
-        let mut l0_sstables = write_guard.l0_sstables.clone();
-        let mut sstables = write_guard.sstables.clone();
-        let mut levels = write_guard.levels.clone();
+            let mut write_guard = self.state.write().unwrap();
+            let mut l0_sstables = write_guard.l0_sstables.clone();
+            let mut sstables = write_guard.sstables.clone();
+            let mut levels = write_guard.levels.clone();
 
-        for sst_id in l0.iter() {
-            sstables.remove(sst_id);
-            l0_sstables.retain(|&x| x != *sst_id);
-            remove_file(self.sst_path(*sst_id))?;
-        }
+            for sst_id in l0.iter() {
+                sstables.remove(sst_id);
+                l0_sstables.retain(|&x| x != *sst_id);
+                remove_file(self.sst_path(*sst_id))?;
+            }
 
-        for sst_id in l1.iter() {
-            sstables.remove(sst_id);
-            levels[0].1.retain(|&x| x != *sst_id);
-            remove_file(self.sst_path(*sst_id))?;
-        }
+            for sst_id in l1.iter() {
+                sstables.remove(sst_id);
+                levels[0].1.retain(|&x| x != *sst_id);
+                remove_file(self.sst_path(*sst_id))?;
+            }
 
-        sstables.insert(id, Arc::new(table));
-        levels[0].1.insert(0, id);
+            sstables.insert(id, Arc::new(table));
+            levels[0].1.insert(0, id);
 
-        *write_guard = Arc::new(StorageState {
-            memtable: write_guard.memtable.clone(),
-            frozen_memtables: write_guard.frozen_memtables.clone(),
-            l0_sstables,
-            sstables,
-            levels,
-        });
+            *write_guard = Arc::new(StorageState {
+                memtable: write_guard.memtable.clone(),
+                frozen_memtables: write_guard.frozen_memtables.clone(),
+                l0_sstables,
+                sstables,
+                levels,
+            });
 
+            id
+        };
+
+        let state_lock = self.state_lock.lock().unwrap();
+        self.manifest
+            .add_record(&state_lock, Compaction(compact_sst_id));
         Ok(())
     }
 
