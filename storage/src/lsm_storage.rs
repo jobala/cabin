@@ -1,3 +1,5 @@
+use anyhow::Result;
+use bytes::Bytes;
 use std::{
     collections::HashMap,
     ops::Bound,
@@ -16,12 +18,10 @@ use crate::{
         merged_iterator::MergedIterator, two_merge_iterator::TwoMergeIterator,
     },
     lsm_util::{create_db_dir, load_sstables},
-    manifest::{self, Manifest, ManifestRecord},
+    manifest::{Manifest, ManifestRecord},
     memtable::{memtable_iterator::map_bound, table::Memtable},
     sst::BlockCache,
 };
-use anyhow::Result;
-use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct Storage {
@@ -66,10 +66,11 @@ pub fn new(config: Config) -> Arc<Storage> {
         }
         Err(_) => manifest = Manifest::create(manifest_file).unwrap(),
     }
-    let (l0_sstables, l1_sstables, sstables) =
+
+    let (l0_sst_ids, l1_sst_ids, sstables) =
         load_sstables(db_dir, block_cache, manifest_records).expect("loaded sstables");
 
-    let sst_id = match ([l0_sstables.clone(), l1_sstables.clone()].concat())
+    let sst_id = match ([l0_sst_ids.clone(), l1_sst_ids.clone()].concat())
         .iter()
         .max()
     {
@@ -82,11 +83,11 @@ pub fn new(config: Config) -> Arc<Storage> {
         sst_id: AtomicUsize::new(sst_id),
         state_lock: Mutex::new(()),
         manifest,
-        block_cache: Arc::new(BlockCache::new(1 << 20)), // 4gb cache
+        block_cache: Arc::new(BlockCache::new(1 << 20)), // 1mb cache
         state: RwLock::new(Arc::new(StorageState {
-            l0_sstables,
+            l0_sstables: l0_sst_ids,
             sstables,
-            levels: vec![(0, l1_sstables)],
+            levels: vec![(0, l1_sst_ids)],
             frozen_memtables: Vec::new(),
             memtable: Arc::new(Memtable::new(sst_id)),
         })),
@@ -589,5 +590,52 @@ mod tests {
     }
 
     #[test]
-    fn test_manifest_recovery() {}
+    fn test_manifest_recovery() {
+        let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        for (key, value) in get_entries() {
+            storage.put(key, value).unwrap();
+        }
+
+        // will create sstables with  a, b, c, d, e & f
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage.trigger_compaction().expect("compacted");
+
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage.trigger_compaction().expect("compacted");
+
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+        storage
+            .flush_frozen_memtable()
+            .expect("memtable to have been frozen");
+
+        let config = Config {
+            sst_size: 4,
+            block_size: 32,
+            db_dir: db_dir.clone(),
+            num_memtable_limit: 5,
+        };
+        let storage = new(config);
+
+        let state = {
+            let guard = storage.state.read().unwrap();
+            guard.clone()
+        };
+
+        assert_eq!(state.l0_sstables, [3, 2]);
+        assert_eq!(state.levels[0].1, [8])
+    }
 }

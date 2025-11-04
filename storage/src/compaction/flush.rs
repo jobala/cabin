@@ -44,7 +44,7 @@ impl Storage {
         };
 
         let state_lock = self.state_lock.lock().unwrap();
-        self.manifest.add_record(&state_lock, Flush(sst_id));
+        self.manifest.add_record(&state_lock, Flush(sst_id))?;
         Ok(())
     }
 
