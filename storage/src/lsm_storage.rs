@@ -70,10 +70,7 @@ pub fn new(config: Config) -> Arc<Storage> {
     let (l0_sst_ids, l1_sst_ids, sstables) =
         load_sstables(db_dir, block_cache, manifest_records).expect("loaded sstables");
 
-    let sst_id = match ([l0_sst_ids.clone(), l1_sst_ids.clone()].concat())
-        .iter()
-        .max()
-    {
+    let sst_id = match ([&l0_sst_ids[..], &l1_sst_ids[..]].concat()).iter().max() {
         Some(id) => id + 1,
         None => 0,
     };

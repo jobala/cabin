@@ -5,6 +5,7 @@ pub mod lsm_storage;
 mod lsm_util;
 mod manifest;
 pub mod memtable;
+mod wal;
 
 mod block;
 mod sst;
