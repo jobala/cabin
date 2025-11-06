@@ -8,13 +8,14 @@ use std::{
 use anyhow::{Ok, Result};
 
 use crate::{
-    SSTableBuilder, SSTableIterator, Storage, common::iterator::StorageIterator,
-    iterators::merged_iterator::MergedIterator, lsm_storage::StorageState,
-    manifest::ManifestRecord::Compaction,
+    SSTableBuilder, SSTableIterator, common::iterator::StorageIterator,
+    iterators::merged_iterator::MergedIterator, lsm_storage_inner::StorageInner,
+    lsm_storage_inner::StorageState, manifest::ManifestRecord::Compaction,
 };
+
 const COMPACT_INTERVAL: Duration = Duration::from_secs(60);
 
-impl Storage {
+impl StorageInner {
     pub fn trigger_compaction(&self) -> Result<()> {
         let state = {
             let guard = self.state.read().unwrap();
@@ -101,7 +102,9 @@ mod tests {
     use bytes::Bytes;
     use tempfile::tempdir;
 
-    use crate::{Config, common::iterator::StorageIterator, lsm_util::get_entries, new};
+    use crate::{
+        Config, common::iterator::StorageIterator, lsm_storage_inner::new, lsm_util::get_entries,
+    };
 
     #[test]
     fn test_compaction() {
@@ -113,7 +116,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -148,7 +151,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -211,7 +214,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
         let mut entries = get_entries();
 
         // adds a new version of key a=3
@@ -268,7 +271,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
