@@ -16,7 +16,7 @@ fn get_returns_latest_entry() {
         num_memtable_limit: 5,
         enable_wal: true,
     };
-    let storage = cabin_storage::new(config);
+    let storage = cabin_storage::new(config).unwrap();
     let entries = vec![
         (b"age", b"20"),
         (b"age", b"21"),
@@ -41,7 +41,7 @@ fn can_read_frozen_memtable() {
         num_memtable_limit: 5,
         enable_wal: true,
     };
-    let storage = cabin_storage::new(config);
+    let storage = cabin_storage::new(config).unwrap();
     let entries = vec![(b"1", b"20"), (b"2", b"21"), (b"3", b"22"), (b"4", b"23")];
 
     for (k, v) in entries {
@@ -62,7 +62,7 @@ fn get_invalid_key() {
         num_memtable_limit: 5,
         enable_wal: true,
     };
-    let storage = cabin_storage::new(config);
+    let storage = cabin_storage::new(config).unwrap();
 
     storage.get(b"1").unwrap();
 }
@@ -76,7 +76,7 @@ fn scan_items() {
         num_memtable_limit: 5,
         enable_wal: true,
     };
-    let storage = cabin_storage::new(config);
+    let storage = cabin_storage::new(config).unwrap();
     let entries = vec![
         (b"e", b"4"),
         (b"a", b"1"),

@@ -51,7 +51,7 @@ pub struct Config {
     pub enable_wal: bool,
 }
 
-pub fn new(config: Config) -> Arc<Storage> {
+pub fn new(config: Config) -> Result<Arc<Storage>> {
     let state_lock = Mutex::new(());
     let block_cache = Arc::new(BlockCache::new(4096));
     let db_dir = Path::new(&config.db_dir);
@@ -66,11 +66,11 @@ pub fn new(config: Config) -> Arc<Storage> {
             manifest = man;
             manifest_records = manifest_recs;
         }
-        Err(_) => manifest = Manifest::create(manifest_file).unwrap(),
+        Err(_) => manifest = Manifest::create(manifest_file)?,
     }
 
     let (memtable_ids, l0_sst_ids, l1_sst_ids, sstables) =
-        load_sstables(db_dir, block_cache, manifest_records).expect("loaded sstables");
+        load_sstables(db_dir, block_cache, manifest_records)?;
     let sst_id = match ([&memtable_ids[..], &l0_sst_ids[..], &l1_sst_ids[..]].concat())
         .iter()
         .max()
@@ -83,7 +83,7 @@ pub fn new(config: Config) -> Arc<Storage> {
         true => {
             let wal_path = db_dir.join(format!("{sst_id}.wal"));
             if memtable_ids.is_empty() {
-                let memtable = Memtable::new_with_wal(sst_id, wal_path.as_path()).expect("");
+                let memtable = Memtable::new_with_wal(sst_id, wal_path.as_path())?;
                 manifest
                     .add_record(
                         &state_lock.lock().unwrap(),
@@ -96,8 +96,7 @@ pub fn new(config: Config) -> Arc<Storage> {
                 let mut memtables = vec![];
                 for id in memtable_ids {
                     let wal_path = db_dir.join(format!("{id}.wal"));
-                    let memtable =
-                        Memtable::new_with_wal(id, wal_path.as_path()).expect("created memtable");
+                    let memtable = Memtable::new_with_wal(id, wal_path.as_path())?;
                     memtables.push(Arc::new(memtable));
                 }
 
@@ -125,7 +124,7 @@ pub fn new(config: Config) -> Arc<Storage> {
             .expect("added manifest record");
     }
 
-    Arc::new(Storage {
+    Ok(Arc::new(Storage {
         config,
         state_lock,
         manifest,
@@ -138,7 +137,7 @@ pub fn new(config: Config) -> Arc<Storage> {
             l0_sstables: l0_sst_ids,
             levels: vec![(0, l1_sst_ids)],
         })),
-    })
+    }))
 }
 
 impl Storage {
@@ -358,7 +357,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         let input = vec![b"1", b"2", b"3", b"4", b"5"];
         for entry in input {
@@ -378,7 +377,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         let input = vec![b"1", b"2", b"3", b"4", b"5"];
         for entry in input {
@@ -404,7 +403,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         let input = vec![b"1", b"2", b"3", b"4", b"5"];
         for entry in input {
@@ -423,7 +422,7 @@ mod tests {
             enable_wal: true,
         };
 
-        let storage = new(config);
+        let storage = new(config).unwrap();
         assert_eq!(1, storage.state.read().unwrap().l0_sstables.len());
         assert_eq!(0, storage.state.read().unwrap().l0_sstables[0]);
     }
@@ -438,7 +437,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: false,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -456,7 +455,7 @@ mod tests {
             enable_wal: true,
         };
 
-        let storage = new(config);
+        let storage = new(config).unwrap();
         let mut iter = storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap();
         let mut res = vec![];
 
@@ -478,7 +477,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -505,7 +504,7 @@ mod tests {
         };
 
         let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
-        let storage = new(config);
+        let storage = new(config).unwrap();
         for (key, value) in new_entries {
             let _ = storage.put(key, value);
         }
@@ -562,7 +561,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -589,7 +588,7 @@ mod tests {
         };
 
         let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
-        let storage = new(config);
+        let storage = new(config).unwrap();
         for (key, value) in new_entries {
             let _ = storage.put(key, value);
         }
@@ -626,7 +625,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -685,7 +684,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -716,7 +715,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         let state = {
             let guard = storage.state.read().unwrap();

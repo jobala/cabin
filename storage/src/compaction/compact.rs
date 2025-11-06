@@ -113,7 +113,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -148,7 +148,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
@@ -211,7 +211,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
         let mut entries = get_entries();
 
         // adds a new version of key a=3
@@ -268,7 +268,7 @@ mod tests {
             num_memtable_limit: 5,
             enable_wal: true,
         };
-        let storage = new(config);
+        let storage = new(config).unwrap();
 
         for (key, value) in get_entries() {
             storage.put(key, value).unwrap();
