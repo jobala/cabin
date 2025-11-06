@@ -78,7 +78,7 @@ impl Storage {
 
         let state_lock = self.state_lock.lock().unwrap();
         self.manifest
-            .add_record(&state_lock, Compaction(compact_sst_id));
+            .add_record(&state_lock, Compaction(compact_sst_id))?;
         Ok(())
     }
 
