@@ -6,6 +6,7 @@ use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone, Debug)]
 pub struct Wal {
     file: Arc<Mutex<BufWriter<File>>>,
 }
@@ -95,6 +96,7 @@ mod test {
         for entry in memtable.iter() {
             res.push((entry.key().to_vec(), entry.value().to_vec()));
         }
+
         assert_eq!(memtable.len(), res.len());
         let res_slices: Vec<(&[u8], &[u8])> = res
             .iter()

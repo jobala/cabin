@@ -48,6 +48,7 @@ pub struct Config {
     pub block_size: usize,
     pub num_memtable_limit: usize,
     pub db_dir: String,
+    pub enable_wal: bool,
 }
 
 pub fn new(config: Config) -> Arc<Storage> {
@@ -74,6 +75,13 @@ pub fn new(config: Config) -> Arc<Storage> {
         None => 0,
     };
 
+    let wal_path = db_dir.join(format!("{sst_id}.wal"));
+    let memtable = if config.enable_wal {
+        Memtable::new_with_wal(sst_id, wal_path.as_path()).expect("memtable with wal")
+    } else {
+        Memtable::new(sst_id)
+    };
+
     Arc::new(Storage {
         config,
         sst_id: AtomicUsize::new(sst_id),
@@ -85,7 +93,7 @@ pub fn new(config: Config) -> Arc<Storage> {
             sstables,
             levels: vec![(0, l1_sst_ids)],
             frozen_memtables: Vec::new(),
-            memtable: Arc::new(Memtable::new(sst_id)),
+            memtable: Arc::new(memtable),
         })),
     })
 }
@@ -284,6 +292,7 @@ mod tests {
             block_size: 32,
             db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -303,6 +312,7 @@ mod tests {
             block_size: 32,
             db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -328,6 +338,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -345,6 +356,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
 
         let storage = new(config);
@@ -360,6 +372,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -376,6 +389,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
 
         let storage = new(config);
@@ -398,6 +412,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -422,6 +437,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
 
         let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
@@ -472,6 +488,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -496,6 +513,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
 
         let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
@@ -535,6 +553,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -593,6 +612,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -623,6 +643,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 

@@ -111,6 +111,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -144,6 +145,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -206,6 +208,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
         let mut entries = get_entries();
@@ -262,6 +265,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 

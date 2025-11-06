@@ -1,5 +1,6 @@
 use std::{
     ops::Bound,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -10,24 +11,41 @@ use anyhow::Result;
 use bytes::Bytes;
 use crossbeam_skiplist::SkipMap;
 
-use crate::{SSTableBuilder, memtable::memtable_iterator::MemtableIterator};
+use crate::{SSTableBuilder, memtable::memtable_iterator::MemtableIterator, wal::Wal};
 
 #[derive(Debug, Clone)]
 pub struct Memtable {
     pub(crate) size: Arc<AtomicUsize>,
     pub(crate) id: usize,
     skip_map: Arc<SkipMap<Bytes, Bytes>>,
+    wal: Option<Wal>,
 }
 
 impl Memtable {
+    pub fn new_with_wal(id: usize, wal_path: &Path) -> Result<Memtable> {
+        let wal = Wal::create(wal_path)?;
+
+        Ok(Self {
+            id,
+            wal: Some(wal),
+            skip_map: Arc::new(SkipMap::new()),
+            size: Arc::new(AtomicUsize::new(0)),
+        })
+    }
+
     pub fn new(id: usize) -> Self {
         Self {
+            wal: None,
             skip_map: Arc::new(SkipMap::new()),
             size: Arc::new(AtomicUsize::new(0)),
             id,
         }
     }
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        if let Some(wal) = &self.wal {
+            wal.put(key, value)?;
+        };
+
         self.skip_map
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
 

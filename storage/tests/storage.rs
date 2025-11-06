@@ -14,6 +14,7 @@ fn get_returns_latest_entry() {
         block_size: 32,
         db_dir: get_temp_dir(),
         num_memtable_limit: 5,
+        enable_wal: true,
     };
     let storage = cabin_storage::new(config);
     let entries = vec![
@@ -38,6 +39,7 @@ fn can_read_frozen_memtable() {
         block_size: 32,
         db_dir: get_temp_dir(),
         num_memtable_limit: 5,
+        enable_wal: true,
     };
     let storage = cabin_storage::new(config);
     let entries = vec![(b"1", b"20"), (b"2", b"21"), (b"3", b"22"), (b"4", b"23")];
@@ -58,6 +60,7 @@ fn get_invalid_key() {
         block_size: 32,
         db_dir: String::from(tempdir().unwrap().path().to_str().unwrap()),
         num_memtable_limit: 5,
+        enable_wal: true,
     };
     let storage = cabin_storage::new(config);
 
@@ -71,6 +74,7 @@ fn scan_items() {
         block_size: 32,
         db_dir: get_temp_dir(),
         num_memtable_limit: 5,
+        enable_wal: true,
     };
     let storage = cabin_storage::new(config);
     let entries = vec![
