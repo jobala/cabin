@@ -7,11 +7,14 @@ use std::{
     time::Duration,
 };
 
-use crate::{SSTableBuilder, Storage, lsm_storage::StorageState, manifest::ManifestRecord::Flush};
+use crate::{
+    SSTableBuilder, lsm_storage_inner::StorageInner, lsm_storage_inner::StorageState,
+    manifest::ManifestRecord::Flush,
+};
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 
-impl Storage {
+impl StorageInner {
     pub(crate) fn flush_frozen_memtable(&self) -> Result<()> {
         let sst_id = {
             let mut sst_builder = SSTableBuilder::new(self.config.block_size);
