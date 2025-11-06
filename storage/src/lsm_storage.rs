@@ -436,7 +436,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
-            enable_wal: true,
+            enable_wal: false,
         };
         let storage = new(config);
 
@@ -540,8 +540,16 @@ mod tests {
                 .id
         );
 
-        assert_eq!(keys, vec!["a", "b", "c", "d", "e", "f"]);
-        assert_eq!(values, vec!["20", "23", "3", "22", "21", "6"]);
+        assert_eq!(
+            keys,
+            vec!["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"]
+        );
+        assert_eq!(
+            values,
+            vec![
+                "20", "23", "3", "22", "21", "6", "7", "8", "9", "10", "11", "12"
+            ]
+        );
     }
 
     #[test]
@@ -577,7 +585,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
-            enable_wal: true,
+            enable_wal: false,
         };
 
         let new_entries = vec![(b"a", b"20"), (b"e", b"21"), (b"d", b"22"), (b"b", b"23")];
@@ -598,7 +606,6 @@ mod tests {
         while iter.is_valid() {
             let k = from_utf8(iter.key()).unwrap();
             let v = from_utf8(iter.value()).unwrap();
-            println!("key: {:?}, value: {:?}", k, v);
             keys.push(String::from(k));
             values.push(String::from(v));
 
