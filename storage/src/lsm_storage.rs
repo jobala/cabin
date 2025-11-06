@@ -51,14 +51,13 @@ pub struct Config {
 }
 
 pub fn new(config: Config) -> Arc<Storage> {
-    let db_dir = Path::new(&config.db_dir);
-    let manifest_file = db_dir.join("manifest");
-    create_db_dir(db_dir);
     let block_cache = Arc::new(BlockCache::new(4096));
+    let db_dir = Path::new(&config.db_dir);
+    create_db_dir(db_dir);
 
     let manifest;
     let mut manifest_records: Vec<ManifestRecord> = vec![];
-
+    let manifest_file = db_dir.join("manifest");
     match Manifest::recover(&manifest_file) {
         Ok((man, manifest_recs)) => {
             manifest = man;

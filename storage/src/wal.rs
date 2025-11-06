@@ -62,7 +62,44 @@ impl Wal {
     }
 
     pub fn sync(&self) -> Result<()> {
-        let mut guard = self.file.lock().unwrap();
-        Ok(guard.flush()?)
+        let mut file = self.file.lock().unwrap();
+        file.flush()?;
+        file.get_mut().sync_all()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crossbeam_skiplist::SkipMap;
+    use tempfile::tempdir;
+
+    use crate::{lsm_util::get_entries, wal::Wal};
+
+    #[test]
+    fn test_wal_recovery() {
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("wal");
+        let wal = Wal::create(wal_path.as_path()).unwrap();
+
+        let entries = get_entries();
+        for (key, value) in &entries {
+            wal.put(key, value).unwrap();
+        }
+        wal.sync().unwrap();
+
+        let memtable = SkipMap::new();
+        let _ = Wal::recover(wal_path.as_path(), &memtable).unwrap();
+        let mut res = vec![];
+
+        for entry in memtable.iter() {
+            res.push((entry.key().to_vec(), entry.value().to_vec()));
+        }
+        assert_eq!(memtable.len(), res.len());
+        let res_slices: Vec<(&[u8], &[u8])> = res
+            .iter()
+            .map(|(k, v)| (k.as_slice(), v.as_slice()))
+            .collect();
+        assert_eq!(res_slices, entries);
     }
 }
