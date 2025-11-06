@@ -52,8 +52,10 @@ pub struct Config {
 }
 
 pub fn new(config: Config) -> Arc<Storage> {
+    let state_lock = Mutex::new(());
     let block_cache = Arc::new(BlockCache::new(4096));
     let db_dir = Path::new(&config.db_dir);
+
     create_db_dir(db_dir);
 
     let manifest;
@@ -67,33 +69,74 @@ pub fn new(config: Config) -> Arc<Storage> {
         Err(_) => manifest = Manifest::create(manifest_file).unwrap(),
     }
 
-    let (l0_sst_ids, l1_sst_ids, sstables) =
+    let (memtable_ids, l0_sst_ids, l1_sst_ids, sstables) =
         load_sstables(db_dir, block_cache, manifest_records).expect("loaded sstables");
-
-    let sst_id = match ([&l0_sst_ids[..], &l1_sst_ids[..]].concat()).iter().max() {
+    let sst_id = match ([&memtable_ids[..], &l0_sst_ids[..], &l1_sst_ids[..]].concat())
+        .iter()
+        .max()
+    {
         Some(id) => id + 1,
         None => 0,
     };
 
-    let wal_path = db_dir.join(format!("{sst_id}.wal"));
-    let memtable = if config.enable_wal {
-        Memtable::new_with_wal(sst_id, wal_path.as_path()).expect("memtable with wal")
-    } else {
-        Memtable::new(sst_id)
+    let (memtable, frozen_memtables) = match config.enable_wal {
+        true => {
+            let wal_path = db_dir.join(format!("{sst_id}.wal"));
+            if memtable_ids.is_empty() {
+                let memtable = Memtable::new_with_wal(sst_id, wal_path.as_path()).expect("");
+                manifest
+                    .add_record(
+                        &state_lock.lock().unwrap(),
+                        ManifestRecord::NewMemtable(sst_id),
+                    )
+                    .expect("added manifest record");
+
+                (Arc::new(memtable), vec![])
+            } else {
+                let mut memtables = vec![];
+                for id in memtable_ids {
+                    let wal_path = db_dir.join(format!("{id}.wal"));
+                    let memtable =
+                        Memtable::new_with_wal(id, wal_path.as_path()).expect("created memtable");
+                    memtables.push(Arc::new(memtable));
+                }
+
+                (memtables.remove(0), memtables)
+            }
+        }
+        _ => {
+            manifest
+                .add_record(
+                    &state_lock.lock().unwrap(),
+                    ManifestRecord::NewMemtable(sst_id),
+                )
+                .expect("added manifest record");
+
+            (Arc::new(Memtable::new(sst_id)), vec![])
+        }
     };
+
+    if memtable.get_size() == 0 {
+        manifest
+            .add_record(
+                &state_lock.lock().unwrap(),
+                ManifestRecord::NewMemtable(sst_id),
+            )
+            .expect("added manifest record");
+    }
 
     Arc::new(Storage {
         config,
-        sst_id: AtomicUsize::new(sst_id),
-        state_lock: Mutex::new(()),
+        state_lock,
         manifest,
+        sst_id: AtomicUsize::new(sst_id),
         block_cache: Arc::new(BlockCache::new(1 << 20)), // 1mb cache
         state: RwLock::new(Arc::new(StorageState {
-            l0_sstables: l0_sst_ids,
             sstables,
+            frozen_memtables,
+            memtable,
+            l0_sstables: l0_sst_ids,
             levels: vec![(0, l1_sst_ids)],
-            frozen_memtables: Vec::new(),
-            memtable: Arc::new(memtable),
         })),
     })
 }
@@ -108,7 +151,7 @@ impl Storage {
             size = guard.memtable.get_size();
         }
 
-        self.try_freeze(size);
+        self.try_freeze(size)?;
         Ok(())
     }
 
@@ -239,16 +282,19 @@ impl Storage {
         Ok(LsmIterator::new(mem_l0_l1, map_bound(upper)))
     }
 
-    fn try_freeze(&self, size: usize) {
+    fn try_freeze(&self, size: usize) -> Result<()> {
         if size >= self.config.sst_size {
             let lock = self.state_lock.lock().unwrap();
-            self.freeze(&lock);
+            self.freeze(&lock)?;
         }
+
+        Ok(())
     }
 
-    fn freeze(&self, _state_lock: &MutexGuard<()>) {
+    fn freeze(&self, state_lock: &MutexGuard<()>) -> Result<()> {
         let mut guard = self.state.write().unwrap();
         let memtable = guard.memtable.clone();
+        memtable.sync_wal()?;
 
         // check again, another thread might have frozen the memtable already.
         if memtable.get_size() >= self.config.sst_size {
@@ -256,9 +302,12 @@ impl Storage {
             frozen_memtables.insert(0, memtable);
 
             let id = self.get_sst_id();
+            self.manifest
+                .add_record(state_lock, ManifestRecord::NewMemtable(id))?;
+            let memtable = self.create_memtable(id)?;
 
             *guard = Arc::new(StorageState {
-                memtable: Arc::new(Memtable::new(id)),
+                memtable: Arc::new(memtable),
                 frozen_memtables,
                 l0_sstables: guard.l0_sstables.clone(),
                 sstables: guard.sstables.clone(),
@@ -267,11 +316,26 @@ impl Storage {
 
             drop(guard);
         }
+
+        Ok(())
+    }
+
+    fn create_memtable(&self, id: usize) -> Result<Memtable> {
+        let wal_path = Path::new(&self.config.db_dir).join(format!("{id}.wal"));
+        let memtable = match self.config.enable_wal {
+            true => Memtable::new_with_wal(id, wal_path.as_path()).expect("memtable with wal"),
+            _ => Memtable::new(id),
+        };
+
+        Ok(memtable)
     }
 
     pub(crate) fn get_sst_id(&self) -> usize {
         self.sst_id.fetch_add(1, SeqCst);
         self.sst_id.load(SeqCst)
+    }
+    pub fn sync(&self) -> Result<()> {
+        self.state.read().unwrap().memtable.sync_wal()
     }
 }
 
@@ -534,7 +598,7 @@ mod tests {
         while iter.is_valid() {
             let k = from_utf8(iter.key()).unwrap();
             let v = from_utf8(iter.value()).unwrap();
-
+            println!("key: {:?}, value: {:?}", k, v);
             keys.push(String::from(k));
             values.push(String::from(v));
 

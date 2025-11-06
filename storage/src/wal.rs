@@ -15,7 +15,7 @@ impl Wal {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let mut open_opts = OpenOptions::new();
         open_opts.read(true).write(true).create(true);
-        let mut file = open_opts.open(path)?;
+        let file = open_opts.open(path)?;
 
         let buf_writer = BufWriter::new(file);
         Ok(Wal {
@@ -23,8 +23,12 @@ impl Wal {
         })
     }
 
-    pub fn recover(path: impl AsRef<Path>, skiplist: &SkipMap<Bytes, Bytes>) -> Result<Self> {
+    pub fn recover(
+        path: impl AsRef<Path>,
+        skiplist: &SkipMap<Bytes, Bytes>,
+    ) -> Result<(u16, Self)> {
         let mut open_opts = OpenOptions::new();
+        let mut size = 0;
         open_opts.read(true).write(true).create(true);
         let mut file = open_opts.open(path)?;
 
@@ -36,18 +40,23 @@ impl Wal {
             let len = buf_ptr.get_u16();
             let key = &buf_ptr[..len as usize];
             buf_ptr.advance(len as usize);
+            size += len;
 
             let len = buf_ptr.get_u16();
             let value = &buf_ptr[..len as usize];
             buf_ptr.advance(len as usize);
+            size += len;
 
             skiplist.insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
         }
 
         let buf_writer = BufWriter::new(file);
-        Ok(Wal {
-            file: Arc::new(Mutex::new(buf_writer)),
-        })
+        Ok((
+            size,
+            Wal {
+                file: Arc::new(Mutex::new(buf_writer)),
+            },
+        ))
     }
 
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {

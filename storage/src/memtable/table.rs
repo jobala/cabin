@@ -23,13 +23,14 @@ pub struct Memtable {
 
 impl Memtable {
     pub fn new_with_wal(id: usize, wal_path: &Path) -> Result<Memtable> {
-        let wal = Wal::create(wal_path)?;
+        let skip_map = SkipMap::new();
+        let (size, wal) = Wal::recover(wal_path, &skip_map)?;
 
         Ok(Self {
             id,
             wal: Some(wal),
-            skip_map: Arc::new(SkipMap::new()),
-            size: Arc::new(AtomicUsize::new(0)),
+            skip_map: Arc::new(skip_map),
+            size: Arc::new(AtomicUsize::new(size as usize)),
         })
     }
 
@@ -65,6 +66,13 @@ impl Memtable {
 
     pub fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>) -> MemtableIterator {
         MemtableIterator::create(self.skip_map.clone(), lower, upper)
+    }
+
+    pub fn sync_wal(&self) -> Result<()> {
+        if let Some(ref wal) = self.wal {
+            wal.sync()?;
+        }
+        Ok(())
     }
 
     pub fn flush(&self, builder: &mut SSTableBuilder) -> Result<()> {

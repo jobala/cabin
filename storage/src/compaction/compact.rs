@@ -140,6 +140,7 @@ mod tests {
     #[test]
     fn scans_through_memtables_l0_l1_sstables() {
         let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+
         let config = Config {
             sst_size: 4,
             block_size: 32,

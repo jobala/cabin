@@ -1,5 +1,7 @@
 use anyhow::Result;
 use std::{
+    fs,
+    path::Path,
     sync::Arc,
     thread::{self, JoinHandle},
     time::Duration,
@@ -15,11 +17,11 @@ impl Storage {
             let mut sst_builder = SSTableBuilder::new(self.config.block_size);
             let mut guard = self.state.write().unwrap();
 
-            let mut memtables = guard.frozen_memtables.clone();
+            let mut frozen_memtables = guard.frozen_memtables.clone();
             let mut l0_sstables = guard.l0_sstables.clone();
             let mut sstables = guard.sstables.clone();
 
-            let Some(memtable) = memtables.pop() else {
+            let Some(memtable) = frozen_memtables.pop() else {
                 return Ok(());
             };
             memtable.flush(&mut sst_builder)?;
@@ -32,12 +34,16 @@ impl Storage {
             l0_sstables.insert(0, memtable.id);
             sstables.insert(memtable.id, Arc::new(sst));
 
+            if self.config.enable_wal {
+                self.remove_wal(memtable.id)?;
+            }
+
             *guard = Arc::new(StorageState {
-                memtable: guard.memtable.clone(),
-                frozen_memtables: memtables,
-                levels: guard.levels.clone(),
+                frozen_memtables,
                 l0_sstables,
                 sstables,
+                levels: guard.levels.clone(),
+                memtable: guard.memtable.clone(),
             });
 
             memtable.id
@@ -57,6 +63,13 @@ impl Storage {
         if self.config.num_memtable_limit > memtable_count {
             self.flush_frozen_memtable()?;
         }
+
+        Ok(())
+    }
+
+    fn remove_wal(&self, id: usize) -> Result<()> {
+        let wal_path = Path::new(&self.config.db_dir).join(format!("{id}.wal"));
+        fs::remove_file(wal_path)?;
 
         Ok(())
     }
