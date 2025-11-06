@@ -111,6 +111,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -139,11 +140,13 @@ mod tests {
     #[test]
     fn scans_through_memtables_l0_l1_sstables() {
         let db_dir = String::from(tempdir().unwrap().path().to_str().unwrap());
+
         let config = Config {
             sst_size: 4,
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 
@@ -206,6 +209,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
         let mut entries = get_entries();
@@ -262,6 +266,7 @@ mod tests {
             block_size: 32,
             db_dir: db_dir.clone(),
             num_memtable_limit: 5,
+            enable_wal: true,
         };
         let storage = new(config);
 

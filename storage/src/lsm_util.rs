@@ -1,21 +1,35 @@
 use anyhow::Result;
-use std::{collections::HashMap, fs, path::Path, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+    sync::Arc,
+};
 
 use crate::{FileObject, SSTable, manifest::ManifestRecord, sst::BlockCache};
 
-type LoadedSstables = (Vec<usize>, Vec<usize>, HashMap<usize, Arc<SSTable>>);
+type RecoveredState = (
+    Vec<usize>,
+    Vec<usize>,
+    Vec<usize>,
+    HashMap<usize, Arc<SSTable>>,
+);
 
 pub(crate) fn load_sstables(
     path: &Path,
     block_cache: Arc<BlockCache>,
     manifest_recs: Vec<ManifestRecord>,
-) -> Result<LoadedSstables> {
+) -> Result<RecoveredState> {
     let mut l0 = vec![];
     let mut l1 = vec![];
+    let mut memtables = vec![];
     let mut sstables = HashMap::new();
 
     for record in manifest_recs {
         match record {
+            ManifestRecord::NewMemtable(id) => {
+                memtables.insert(0, id);
+            }
             ManifestRecord::Flush(sst_id) => {
                 l0.insert(0, sst_id);
             }
@@ -26,8 +40,11 @@ pub(crate) fn load_sstables(
                 // we only support full compaction which means there's only one l1 sstable
                 l1 = vec![sst_id]
             }
-            _ => {}
         }
+
+        // filter out memtables flushed to l0
+        let l0_set: HashSet<_> = l0.iter().collect();
+        memtables.retain(|x| !l0_set.contains(x));
     }
 
     for l0_sst_id in &l0 {
@@ -46,7 +63,7 @@ pub(crate) fn load_sstables(
         sstables.insert(sst.id, Arc::new(sst));
     }
 
-    anyhow::Ok((l0, l1, sstables))
+    anyhow::Ok((memtables, l0, l1, sstables))
 }
 
 pub(crate) fn create_db_dir(path: &Path) {
